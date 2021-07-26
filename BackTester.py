@@ -9,6 +9,7 @@
 from define import *
 from Factor import Factor
 from Position import Position
+from Account import Account
 from editorconfig import get_properties, EditorConfigError
 import pandas as pd
 import logging
@@ -89,13 +90,15 @@ def on_tick(factor=None, position=None, tick=[], *args, **kwargs):
 
 def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
     file_name = 'C:\projects\pycharm\option_future_research\.editorconfig'
+    backtesting_config = "{0}_{1}".format(product_id, trade_date)
     try:
         options = get_properties(file_name)
     except EditorConfigError:
         logging.warning("Error getting EditorConfig propterties", exc_info=True)
     else:
         for key, value in options.items():
-            print("{0}:{1}".format(key, value))
+            backtesting_config = '{0},{1}:{2}'.format(backtesting_config, key, value)
+            # print("{0}:{1}".format(key, value))
     # load daily market data
     df = pd.read_csv('cache/future_20210331_20210630.csv')
     df = df[df.mainCon == 1]
@@ -116,6 +119,7 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
     values = m_df.values
     factor = Factor()
     position = Position()
+    account = Account()
     # kwargs.update({'instrument_id': instrument_id})
     #
     volitility = float(options.get('volitility')) or 20.0
@@ -126,18 +130,16 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
     stop_profit = float(options.get('stop_profit')) or 5.0
     stop_loss = float(options.get('stop_loss')) or 20.0
     print("target return", stop_profit)
-    # fee = float(options.get('fee')) or 3.0
     open_fee = float(options.get('open_fee')) or 3.0
     close_t0_fee = float(options.get('close_t0_fee')) or 0.0
     fee = open_fee + close_t0_fee
-    # start_tick must be greater than 2
     start_tick = int(options.get('start_tick')) or 2
     long_lots_limit = int(options.get('long_lots_limit')) or 1
     short_lots_limit = int(options.get('short_lots_limit')) or 1
     slope_upper = float(options.get('slope_upper')) or 1.0
     slope_lower = float(options.get('slope_lower')) or -1.0
     total_return = 0.0
-    transaction_lst = []
+    # transaction_lst = []
     _text_lst = ['00', '01', '10', '11']
     for idx, item in enumerate(values):
 
@@ -158,25 +160,34 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
         # _signal = on_tick(factor, position, item, args, kwargs)
         if _signal == LONG_OPEN:
             position.open_position(instrument_id, LONG, _last, _update_time)
-            transaction_lst.append([idx, instrument_id, _text_lst[LONG_OPEN], _last, _update_time, 0.0])
+            account.add_transaction(
+                [idx, instrument_id, _text_lst[LONG_OPEN], _last, _last, open_fee, _update_time, 0.0])
+            account.update_fee(open_fee)
 
         elif _signal == SHORT_OPEN:
             position.open_position(instrument_id, SHORT, _last, _update_time)
-            transaction_lst.append([idx, instrument_id, _text_lst[SHORT_OPEN], _last, _update_time, 0.0])
+            account.add_transaction(
+                [idx, instrument_id, _text_lst[SHORT_OPEN], _last, _last, open_fee, _update_time, 0.0])
+            account.update_fee(open_fee)
+
         elif _signal == LONG_CLOSE:
             _pos = position.get_position_side(instrument_id, LONG)
             if _pos:
                 position.close_position(instrument_id, LONG, _last, _update_time)
                 total_return += (_last - _pos[1]) * dict_multiplier.get(product_id) - fee
-                transaction_lst.append([idx, instrument_id, _text_lst[LONG_CLOSE], _last, _update_time,
-                                        (_last - _pos[1]) * dict_multiplier.get(product_id) - fee])
+                account.add_transaction(
+                    [idx, instrument_id, _text_lst[LONG_CLOSE], _last, _pos[1], close_t0_fee, _update_time,
+                     (_last - _pos[1]) * dict_multiplier.get(product_id) - fee])
+                account.update_fee(close_t0_fee)
         elif _signal == SHORT_CLOSE:
             _pos = position.get_position_side(instrument_id, SHORT)
             if _pos:
                 position.close_position(instrument_id, SHORT, _last, _update_time)
                 total_return += (_pos[1] - _last) * dict_multiplier.get(product_id) - fee
-                transaction_lst.append([idx, instrument_id, _text_lst[SHORT_CLOSE], _last, _update_time,
-                                        (_pos[1] - _last) * dict_multiplier.get(product_id) - fee])
+                account.add_transaction(
+                    [idx, instrument_id, _text_lst[SHORT_CLOSE], _last, _pos[1], close_t0_fee, _update_time,
+                     (_pos[1] - _last) * dict_multiplier.get(product_id) - fee])
+                account.update_fee(close_t0_fee)
         else:  # NO_SIGNAL
             pass
             # _pos = position.get_position(instrument_id)
@@ -191,12 +202,16 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
         for item in _pos:
             if item[0] == LONG:
                 total_return += ((_last_price - item[1]) * dict_multiplier.get(product_id) - fee)
-                transaction_lst.append([idx, instrument_id, _text_lst[LONG_CLOSE], _last_price, _update_time,
-                                        (_last_price - item[1]) * dict_multiplier.get(product_id) - fee])
+                account.add_transaction(
+                    [idx, instrument_id, _text_lst[LONG_CLOSE], _last_price, item[1], close_t0_fee, _update_time,
+                     (_last_price - item[1]) * dict_multiplier.get(product_id) - fee])
+                account.update_fee(close_t0_fee)
             else:
                 total_return += ((item[1] - _last_price) * dict_multiplier.get(product_id) - fee)
-                transaction_lst.append([idx, instrument_id, _text_lst[SHORT_CLOSE], _last_price, _update_time,
-                                        (item[1] - _last_price) * dict_multiplier.get(product_id) - fee])
+                account.add_transaction(
+                    [idx, instrument_id, _text_lst[SHORT_CLOSE], _last_price, item[1], close_t0_fee, _update_time,
+                     (item[1] - _last_price) * dict_multiplier.get(product_id) - fee])
+                account.update_fee(close_t0_fee)
 
     _idx_lst = list(range(len(factor.last_price)))
     fig = plt.figure()
@@ -224,22 +239,23 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
     for _idx in x_idx:
         xtick_labels.append(factor.update_time[_idx])
     # ax1.xticks(x_idx, xtick_labels, rotation=60, FontSize=6)
-    for item in transaction_lst:
+    for item in account.transaction:
         _t_lst = ['lo', 'lc', 'so', 'sc']
         ax1.text(item[0], item[3], s='{0}'.format(item[2]))
 
     ax2 = ax1.twinx()
-    ax2.plot(_idx_lst[PLT_START:PLT_END], factor.slope[PLT_START:PLT_END], 'r')
+    # ax2.plot(_idx_lst[PLT_START:PLT_END], factor.slope[PLT_START:PLT_END], 'r')
 
     plt.savefig('results/{0}_{1}.jpg'.format(instrument_id, trade_date))
     # plt.show()
-    trans_df = pd.DataFrame(transaction_lst,
-                            columns=['idx', 'instrument_id', 'direction', 'price', 'timestamp', 'return'])
+    trans_df = pd.DataFrame(account.transaction,
+                            columns=['idx', 'instrument_id', 'direction', 'price', 'open_price', 'fee', 'timestamp',
+                                     'return'])
     trans_df.to_csv('results/trans_{0}_{1}.csv'.format(instrument_id, trade_date), index=False)
     long_open, short_open, correct_long_open, wrong_long_open, correct_short_open, wrong_short_open = 0, 0, 0, 0, 0, 0
     total_fee = 0.0
 
-    for item in transaction_lst:
+    for item in account.transaction:
         if item[2] == '00':
             long_open += 1
         elif item[2] == '10':
@@ -257,10 +273,13 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
 
     print(long_open, short_open, correct_long_open, wrong_long_open, correct_short_open, wrong_short_open)
     print('total return:', total_return)
+    print('total fee:', account.fee)
     precision = (correct_long_open + correct_short_open) / (long_open + correct_short_open)
-    f = open("results/results_{0}.txt".format(trade_date), "a")
+    f = open("results/results_{0}.txt".format(product_id), "a")
+    _key = '{0}_{1}'.format(trade_date, instrument_id)
     f.write(
-        "{0}:{1},long_open:{2},short_open:{3},correct_long_open:{4},wrong_long_open:{5},correct_short_open:{6},"
-        "wrong_short_open:{7},precision:{8};\n".format(
-            instrument_id, total_return, long_open, short_open, correct_long_open, wrong_long_open, correct_short_open,
-            wrong_short_open, precision))
+        "${0}\ntotal_return:{1},long_open:{2},short_open:{3},correct_long_open:{4},wrong_long_open:{5},correct_short_open:{6},"
+        "wrong_short_open:{7},precision:{8},total_fee:{9}\n".format(
+            backtesting_config, total_return, long_open, short_open, correct_long_open, wrong_long_open,
+            correct_short_open,
+            wrong_short_open, precision, account.fee))

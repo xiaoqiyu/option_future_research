@@ -5,6 +5,7 @@
 # @Site    : 
 # @File    : Factor.py
 
+import numpy as np
 
 
 class Factor(object):
