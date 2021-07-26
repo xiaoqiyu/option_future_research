@@ -1,0 +1,19 @@
+root = true
+
+[*]
+product_id = i
+trade_date = 20210401
+prev_date = 2021-03-31
+volitility = 18
+k1 = 0.2
+k2 = 0.2
+stop_profit = 5
+stop_loss = 30
+fee = 1.51
+open_fee = 1.51
+close_t0_fee = 0.0
+start_tick = 2
+long_lots_limit = 1
+short_lots_limit = 1
+slope_upper = 1.0
+slope_lower = -1.0
