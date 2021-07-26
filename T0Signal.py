@@ -26,11 +26,10 @@ class TOSignal(Signal):
         stop_profit = kwargs.get('stop_profit') or 5.0
         stop_loss = kwargs.get('stop_loss') or 20.0
 
-        # fee = kwargs.get('fee') or 3.0
+
         open_fee = kwargs.get('open_fee') or 1.51
         close_to_fee = kwargs.get('close_t0_fee') or 0.0
         fee = open_fee + close_to_fee
-        # start_tick must be greater than 2
         start_tick = kwargs.get('start_tick') or 2
         long_lots_limit = kwargs.get('long_lots_limit') or 1
         short_lots_limit = kwargs.get('short_lots_limit') or 1

@@ -129,4 +129,4 @@ dmypy.json
 .pyre/
 cache/
 results/
-T0Signal.py
+*Signal.py
