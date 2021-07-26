@@ -10,7 +10,7 @@ from define import *
 from Factor import Factor
 from Position import Position
 
-print("testing")
+print("testing---")
 
 class TOSignal(Signal):
     def __init__(self, factor, position):
