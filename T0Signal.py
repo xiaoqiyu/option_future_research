@@ -10,6 +10,7 @@ from define import *
 from Factor import Factor
 from Position import Position
 
+print("testing")
 
 class TOSignal(Signal):
     def __init__(self, factor, position):
@@ -25,7 +26,6 @@ class TOSignal(Signal):
         # adjust by multiplier
         stop_profit = kwargs.get('stop_profit') or 5.0
         stop_loss = kwargs.get('stop_loss') or 20.0
-
 
         open_fee = kwargs.get('open_fee') or 1.51
         close_to_fee = kwargs.get('close_t0_fee') or 0.0
