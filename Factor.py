@@ -6,10 +6,17 @@
 # @File    : Factor.py
 
 import numpy as np
+import pandas
+from utils import *
+
+from define import *
 
 
 class Factor(object):
-    def __init__(self, product_id='m'):
+    def __init__(self, product_id='m', instrument_id='', trade_date=''):
+        self.product_id = product_id
+        self.instrument_id = instrument_id
+        self.trade_date = trade_date
         self.last_price = []
         self.vwap = []
         self.upper_bound = []
@@ -21,13 +28,18 @@ class Factor(object):
         self.turning = []
         self.turning_idx = []
         self.slope = []
+
         self.spread = []
-        self.vol_ratio = []
+        self.b2s_vol = []
+        self.b2s_turnover = []
+        self.vol = []
+        self.turnover = []
         self.price_highest = []
         self.price_lowest = []
-        self.curr_vol = []
-        self.curr_turnover = []
+        # self.curr_vol = []
+        # self.curr_turnover = []
 
+    # @timeit
     def update_factor(self, tick=[], *args, **kwargs):
         last_price = tick[1]
         vol = tick[5]
@@ -41,14 +53,31 @@ class Factor(object):
         self.open_vol = vol if self.open_vol < 0 else self.open_vol
         self.last_price.append(last_price)
         self.update_time.append(tick[10])
-
+        # "BidPrice1", "BidVolume1", "AskPrice1", "AskVolume1",
+        bid_price1, bid_vol1, ask_price1, ask_vol1 = tick[12:16]
+        self.spread.append(bid_price1 - ask_price1)
+        self.b2s_vol.append(bid_vol1 / ask_vol1 if ask_vol1 > 0 else 1.0)
+        self.b2s_turnover.append(
+            ((bid_vol1 * bid_price1) / (ask_vol1 * ask_price1) if ask_vol1 * ask_price1 > 0 else 1.0))
+        self.price_highest.append(max(self.last_price))
+        self.price_lowest.append(min(self.last_price))
         _vwap_val = None
         try:
             if _update_time >= '21:00:00':
-                _vwap_val = (turnover) / (dict_multiplier.get(self.product_id) * (vol))
+                _tmp_vol = vol
+                _tmp_turnover = turnover
+                self.vol.append(_tmp_vol)
+                self.turnover.append(_tmp_turnover)
+                _vwap_val = (_tmp_turnover) / (dict_multiplier.get(self.product_id) * (_tmp_vol))
+
             else:
-                _vwap_val = (turnover - self.open_turnover) / (
-                        dict_multiplier.get(self.product_id) * (vol - self.open_vol))
+                _tmp_vol = vol - self.open_vol
+                _tmp_turnover = turnover - self.open_turnover
+                self.vol.append(_tmp_vol)
+                self.turnover.append(_tmp_turnover)
+                _vwap_val = _tmp_turnover / (
+                        dict_multiplier.get(self.product_id) * (_tmp_vol))
+
         except Exception as ex:
             if self.vwap:
                 _vwap_val = self.vwap[-1]
@@ -85,4 +114,21 @@ class Factor(object):
         pass
 
     def cache_factor(self):
-        pass
+        # factor_df = pandas.DataFrame({'last_price': self.last_price, 'vwap': self.vwap, 'upper_bound': self.upper_bound,
+        #                               'lower_bound': self.lower_bound, 'update_time': self.update_time,
+        #                               'turning': self.turning,
+        #                               'slope': self.slope, 'turning_idx': self.turning_idx, 'spread': self.spread,
+        #                               'vol_ratio': self.vol_ratio, 'price_highest': self.price_highest,
+        #                               'price_lowest': self.price_lowest,
+        #                               'curr_vol': self.curr_vol, 'curr_turnover': self.curr_turnover})
+        factor_df = pandas.DataFrame({'last_price': self.last_price, 'vwap': self.vwap, 'upper_bound': self.upper_bound,
+                                      'lower_bound': self.lower_bound, 'update_time': self.update_time,
+                                      'turning': self.turning,
+                                      'slope': self.slope, 'turning_idx': self.turning_idx, 'spread': self.spread,
+                                      'b2s_vol': self.b2s_vol,
+                                      'b2s_turnover': self.b2s_turnover, 'vol': self.vol,
+                                      'turnover': self.turnover, 'price_high': self.price_highest,
+                                      'price_low': self.price_lowest})
+        # factor_df['slope_rank'] = factor_df['slope'].rank()
+        factor_df.to_csv('{0}/factor_{1}_{2}.csv'.format(factor_file_path, self.instrument_id, self.trade_date),
+                         index=False)

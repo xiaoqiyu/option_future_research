@@ -7,20 +7,34 @@
 
 
 from BackTester import backtesting
-
-
-def search_label(lst=[], win_len=5):
-    ret = [0.0]
-    for idx, item in enumerate(lst):
-        if idx < 1:
-            continue
-        ret.append(item / lst[idx - 1] - 1)
-        if len(ret) < 5:
-            continue
-        # if ret[idx-1] <0 and ret[idx-2]<0 and ret[idx-3]<0:
-
+from editorconfig import get_properties, EditorConfigError
+from define import *
+import logging
+import hashlib
 
 if __name__ == "__main__":
-    # backtesting(product_id='ru', trade_date='20210401', prev_date='2021-03-31', volitily=18.0, k1=0.2, k2=0.2,
-    #             stop_profit=100.0, fee=3.0)
-    backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31')
+    product_id = 'm'
+    total_return, total_fee, precision = 0.0, 0.0, []
+    # test_dates = [('20210401', '2021-03-31'),
+    #               ('20210402', '2021-04-01')]
+    backtesting_config = ''
+    try:
+        options = get_properties(file_name)
+    except EditorConfigError:
+        logging.warning("Error getting EditorConfig propterties", exc_info=True)
+    else:
+        for key, value in options.items():
+            backtesting_config = '{0},{1}:{2}'.format(backtesting_config, key, value)
+    f = open("results/results_{0}.txt".format(product_id), "a")
+    result_fname_digest = hashlib.sha256(bytes(backtesting_config, encoding='utf-8')).hexdigest()
+    f.write("{0}:{1}\n".format(backtesting_config, result_fname_digest))
+    with open('trade_dates.txt', 'r') as f:
+        dates = f.readlines()
+        for trade_date in dates:
+            ret = backtesting(product_id=product_id, trade_date=trade_date.strip(), prev_date=trade_date.strip())
+            if ret:
+                _total_return, _total_fee, _precision = ret
+                total_return += _total_return
+                total_fee += _total_fee
+            break
+        print(total_return, total_fee, precision)

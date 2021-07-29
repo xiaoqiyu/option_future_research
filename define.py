@@ -25,3 +25,6 @@ cols = ["InstrumentID", "LastPrice", "OpenPrice", "HighestPrice", "LowestPrice",
         "AskPrice5", "AskVolume5"]
 
 dict_multiplier = {'m': 10, 'i': 100, 'TA': 1, 'ru': 10, }
+file_name = 'C:\projects\pycharm\option_future_research\.editorconfig'
+factor_file_path = 'C:\projects\pycharm\option_future_research\cache\\factors'
+daily_cache_name = 'cache/future_20210101_20210630.csv'
