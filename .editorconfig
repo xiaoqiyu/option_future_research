@@ -14,5 +14,7 @@ long_lots_limit = 1
 short_lots_limit = 1
 slope_upper = 1.5
 slope_lower = -1.5
-start_timestamp = 09:05:00
-end_timestamp = 22:50:00
+start_timestamp = 21:00:30
+end_timestamp = 14:59:30
+delay_sec = 3
+

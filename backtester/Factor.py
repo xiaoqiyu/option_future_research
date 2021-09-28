@@ -7,7 +7,6 @@
 
 import numpy as np
 import pandas
-from utils import *
 
 from define import *
 
@@ -41,10 +40,10 @@ class Factor(object):
 
     # @timeit
     def update_factor(self, tick=[], *args, **kwargs):
-        last_price = tick[1]
-        vol = tick[5]
-        turnover = tick[6]
-        _update_time = tick[10]
+        last_price = tick[4]
+        vol = tick[3]
+        turnover = tick[2]
+        _update_time = tick[1]
         _range = kwargs.get('range') or 20
         k1 = kwargs.get('k1') or 0.2
         k2 = kwargs.get('k2') or 0.2
@@ -52,31 +51,31 @@ class Factor(object):
         self.open_turnover = turnover if self.open_turnover < 0 else self.open_turnover
         self.open_vol = vol if self.open_vol < 0 else self.open_vol
         self.last_price.append(last_price)
-        self.update_time.append(tick[10])
+        self.update_time.append(_update_time)
         # "BidPrice1", "BidVolume1", "AskPrice1", "AskVolume1",
-        bid_price1, bid_vol1, ask_price1, ask_vol1 = tick[12:16]
-        self.spread.append(bid_price1 - ask_price1)
+        ask_price1, ask_vol1, bid_price1, bid_vol1 = tick[-4:]
+        self.spread.append(ask_price1 - bid_price1)
         self.b2s_vol.append(bid_vol1 / ask_vol1 if ask_vol1 > 0 else 1.0)
         self.b2s_turnover.append(
             ((bid_vol1 * bid_price1) / (ask_vol1 * ask_price1) if ask_vol1 * ask_price1 > 0 else 1.0))
-        self.price_highest.append(max(self.last_price))
-        self.price_lowest.append(min(self.last_price))
+        # self.price_highest.append(max(self.last_price))
+        # self.price_lowest.append(min(self.last_price))
         _vwap_val = None
         try:
-            if _update_time >= '21:00:00':
-                _tmp_vol = vol
-                _tmp_turnover = turnover
-                self.vol.append(_tmp_vol)
-                self.turnover.append(_tmp_turnover)
-                _vwap_val = (_tmp_turnover) / (dict_multiplier.get(self.product_id) * (_tmp_vol))
+            # if _update_time >= '21:00:00':
+            _tmp_vol = vol
+            _tmp_turnover = turnover
+            self.vol.append(_tmp_vol)
+            self.turnover.append(_tmp_turnover)
+            _vwap_val = (_tmp_turnover) / (dict_multiplier.get(self.product_id) * (_tmp_vol))
 
-            else:
-                _tmp_vol = vol - self.open_vol
-                _tmp_turnover = turnover - self.open_turnover
-                self.vol.append(_tmp_vol)
-                self.turnover.append(_tmp_turnover)
-                _vwap_val = _tmp_turnover / (
-                        dict_multiplier.get(self.product_id) * (_tmp_vol))
+            # else:
+            #     _tmp_vol = vol - self.open_vol
+            #     _tmp_turnover = turnover - self.open_turnover
+            #     self.vol.append(_tmp_vol)
+            #     self.turnover.append(_tmp_turnover)
+            #     _vwap_val = _tmp_turnover / (
+            #             dict_multiplier.get(self.product_id) * (_tmp_vol))
 
         except Exception as ex:
             if self.vwap:
@@ -127,8 +126,10 @@ class Factor(object):
                                       'slope': self.slope, 'turning_idx': self.turning_idx, 'spread': self.spread,
                                       'b2s_vol': self.b2s_vol,
                                       'b2s_turnover': self.b2s_turnover, 'vol': self.vol,
-                                      'turnover': self.turnover, 'price_high': self.price_highest,
-                                      'price_low': self.price_lowest})
+                                      'turnover': self.turnover,
+                                      # 'price_high': self.price_highest,
+                                      # 'price_low': self.price_lowest
+                                      })
         # factor_df['slope_rank'] = factor_df['slope'].rank()
         factor_df.to_csv('{0}/factor_{1}_{2}.csv'.format(factor_file_path, self.instrument_id, self.trade_date),
                          index=False)

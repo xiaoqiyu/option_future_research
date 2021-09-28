@@ -13,7 +13,7 @@ class Position(object):
         self.position = defaultdict(list)
 
     def open_position(self, instrument_id, long_short, price, timestamp):
-        self.position[instrument_id].append([long_short, price])
+        self.position[instrument_id].append([long_short, price, timestamp])
 
     def close_position(self, instrument_id, long_short, price, timestamp):
         _lst = self.position.get(instrument_id) or []

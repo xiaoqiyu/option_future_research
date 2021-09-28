@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# @Time    : 2021/7/26 16:32
+# @Time    : 2021/9/28 16:15
 # @Author  : rpyxqi@gmail.com
 # @Site    : 
-# @File    : T0Signal.py
+# @File    : RegSignal.py
 
-from Signal import Signal
+from strategy.Signal import Signal
 from define import *
-from Factor import Factor
-from Position import Position
+from backtester.Factor import Factor
+from backtester.Position import Position
 
 
-class TOSignal(Signal):
+class RegSignal(Signal):
     def __init__(self, factor, position):
         super().__init__(factor, position)
 

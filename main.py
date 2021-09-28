@@ -6,11 +6,12 @@
 # @File    : main.py
 
 
-from BackTester import backtesting
+from backtester.BackTester import backtesting
 from editorconfig import get_properties, EditorConfigError
 from define import *
 import logging
 import hashlib
+import time
 
 if __name__ == "__main__":
     product_id = 'm'
@@ -28,10 +29,17 @@ if __name__ == "__main__":
     f = open("results/results_{0}.txt".format(product_id), "a")
     result_fname_digest = hashlib.sha256(bytes(backtesting_config, encoding='utf-8')).hexdigest()
     f.write("{0}:{1}\n".format(backtesting_config, result_fname_digest))
-    with open('trade_dates.txt', 'r') as f:
-        dates = f.readlines()
-        for trade_date in dates:
-            ret = backtesting(product_id=product_id, trade_date=trade_date.strip(), prev_date=trade_date.strip())
+    with open('cache/dates.txt', 'rb') as f:
+        dates = get_trade_dates()
+        for idx, trade_date in enumerate(dates):
+            if trade_date < '20210106':
+                continue
+            if idx < 1:
+                continue
+            start_ts = time.time()
+            ret = backtesting(product_id=product_id, trade_date=trade_date.strip(), prev_date=dates[idx - 1].strip())
+            end_ts = time.time()
+            print("back testing time:", end_ts - start_ts)
             if ret:
                 _total_return, _total_fee, _precision = ret
                 total_return += _total_return
