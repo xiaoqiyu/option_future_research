@@ -37,7 +37,14 @@ tb_cols = ["Exchange", "InstrumentID", "UpdateTime", "LastPrice", "OpenInterest"
            "AskVolume1"]
 
 dict_multiplier = {'m': 10, 'i': 100, 'TA': 1, 'ru': 10, }
-file_name = '/.editorconfig'
+BASE_DIR = 'option_future_research'
+RESULT_DIR = 'results'
+CONF_DIR = 'conf'
+CONF_FILE_NAME = '.editorconfig'
+TICK_MODEL_DIR = 'tickmodels'
+TICK_MKT_DIR = 'C:\projects\l2mkt\FutAC_TickKZ_PanKou_Daily_202107'
+FACTOR_DIR = 'factors'
+CACHE_DIR = 'cache'
 factor_file_path = 'C:\projects\pycharm\option_future_research\cache\\factors'
 daily_cache_name = 'cache/future_20210101_20210804.csv'
 

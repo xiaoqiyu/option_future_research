@@ -5,7 +5,7 @@
 # @Site    : 
 # @File    : DataProcess.py
 
-from define import *
+from ...utils.define import *
 import os
 import pandas as pd
 from datetime import datetime
@@ -26,7 +26,7 @@ def cache_depth_mkt():
 
 
 def prepare_test_mkt():
-    with open('../../global/trade_dates.txt', 'r') as f:
+    with open('../../utils/trade_dates.txt', 'r') as f:
         lines = f.readlines()
         dates = [item.strip() for item in lines]
         # create folders
@@ -60,11 +60,6 @@ def transaction_analysis():
     # print(short_tran_time)
     # print(max(long_tran_time)/60, min(long_tran_time))
     # print(max(short_tran_time)/60, min(short_tran_time))
-
-
-
-
-
 
 
 if __name__ == '__main__':

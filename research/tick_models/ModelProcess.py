@@ -14,7 +14,7 @@ from uqer import DataAPI
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from sklearn import metrics
-from define import *
+import utils.define as define
 from sklearn.feature_selection import SelectKBest
 from sklearn.feature_selection import mutual_info_classif
 from sklearn.linear_model import LogisticRegression
@@ -22,8 +22,23 @@ from scipy.stats import rankdata
 import talib as ta
 import pandas as pd
 import statsmodels.api as sm
+from editorconfig import get_properties, EditorConfigError
+import logging
+import os
+import gc
 
-uqer_client = uqer.Client(token="")
+try:
+    _conf_file = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.CONF_DIR,
+                              define.CONF_FILE_NAME)
+    options = get_properties(_conf_file)
+except EditorConfigError:
+    logging.warning("Error getting EditorConfig propterties", exc_info=True)
+else:
+    for key, value in options.items():
+        # _config = '{0},{1}:{2}'.format(_config, key, value)
+        print("{0}:{1}".format(key, value))
+
+uqer_client = uqer.Client(token=options.get('uqer_token'))
 
 
 def _is_trading_time(time_str=''):
@@ -55,12 +70,15 @@ def get_factor(trade_date="20210701", predict_windows=1200, lag_long=600,
                stop_profit=0.005, stop_loss=0.01, instrument_id='', exchange_cd=''):
     exchange_lst = ['dc', 'ine', 'sc', 'zc']
     _exchange_path = {'XZCE': 'zc', 'XSGE': 'sc', 'XSIE': 'ine', 'XDCE': 'dc'}.get(exchange_cd)
-    tick_mkt = pd.read_csv(
-        "C:\projects\l2mkt\FutAC_TickKZ_PanKou_Daily_202107\{0}\\{1}_{2}.csv".format(_exchange_path, instrument_id,
-                                                                                     trade_date.replace('-', '')),
-        encoding='gbk')
+    _tick_mkt_path = os.path.join(define.TICK_MKT_DIR, _exchange_path,
+                                  '{0}_{1}.csv'.format(instrument_id, trade_date.replace('-', '')))
+    tick_mkt = pd.read_csv(_tick_mkt_path, encoding='gbk')
+    # tick_mkt = pd.read_csv(
+    #     "C:\projects\l2mkt\FutAC_TickKZ_PanKou_Daily_202107\{0}\\{1}_{2}.csv".format(_exchange_path, instrument_id,
+    #                                                                                  trade_date.replace('-', '')),
+    #     encoding='gbk')
 
-    tick_mkt.columns = tb_cols
+    tick_mkt.columns = define.tb_cols
     _flag = [_is_trading_time(item.split()[-1]) for item in list(tick_mkt['UpdateTime'])]
     tick_mkt = tick_mkt[_flag]
     tick_mkt['log_return'] = tick_mkt['LastPrice'].rolling(2).apply(lambda x: math.log(list(x)[-1] / list(x)[0]))
@@ -212,7 +230,9 @@ def train_model_reg(predict_windows=120,
                 acc_scores[item] = df_score[idx]
         top_features = df_corr['label_cumsum'].abs().sort_values(ascending=False)[1:top_k_features]
         print(list(top_features.index), top_features)
-        df_corr.to_csv('corr_reg_{0}.csv'.format(date))
+        _file_name = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR, define.TICK_MODEL_DIR,
+                                  'corr_reg_{0}.csv'.format(date))
+        df_corr.to_csv(_file_name)
     _scores = [item / (train_days - 1) for item in list(acc_scores.values())]
     _features = list(acc_scores.keys())
     _tmp = list(zip(_features, _scores))
@@ -239,13 +259,18 @@ def train_model_reg(predict_windows=120,
     ret_str = 'rmse:{0}, r2:{1}, date:{2},predict windows:{3}, lag windows:{4}\n'.format(
         np.sqrt(metrics.mean_squared_error(df_factor['label_cumsum'], y_pred)),
         metrics.r2_score(df_factor['label_cumsum'], y_pred), test_dates[1], predict_windows, lag_windows)
-    del df_factor
-    with open('summary.txt', 'a') as f:
+
+    _summary_path = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR, define.TICK_MODEL_DIR,
+                                 'summary.txt')
+    with open(_summary_path, 'a') as f:
         f.write(ret_str)
     # print('rmse:', np.sqrt(metrics.mean_squared_error(df_factor['label_cumsum'], y_pred)), 'r2:',
     #       metrics.r2_score(df_factor['label_cumsum'], y_pred))
     df_pred = pd.DataFrame({'UpdateTime': df_factor['UpdateTime'], 'pred': y_pred})
-    df_pred.to_csv('df_pred_{0}_{1}_{2}.csv'.format(date, predict_windows, lag_windows), index=False)
+    _file_name = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR, define.TICK_MODEL_DIR,
+                              'df_pred_{0}_{1}_{2}.csv'.format(date, predict_windows, lag_windows))
+    df_pred.to_csv(_file_name, index=False)
+    del df_factor
     # plt.plot(y_pred)
     # plt.plot(df_factor['label_cumsum'])
     # plt.show()
@@ -345,16 +370,20 @@ def train_model_clf(predict_windows=120,
     # score = metrics.f1_score(y_pred, df_factor['label_clf'], average='micro')
     # print("f1 micro score", score)
     df_pred = pd.DataFrame({'pred': y_pred, 'true': df_factor['label_clf'], 'UpdateTime': _update_time_str})
-    df_pred.to_csv('df_pred.csv')
+    _file_name = os.path.join(os.path.abspath(os.pardir), define.RESULT_DIR, define.TICK_MODEL_DIR, 'df_pred.csv')
+    df_pred.to_csv(_file_name)
 
 
 def factor_process(product_id='m', trade_date='20210105', instrument_id='m2105', windows_len=1000, stop_profit=3.0):
-    df = pd.read_csv('cache/factors/factor_{0}_{1}.csv'.format(instrument_id, trade_date))
+    _factor_path = os.path.join(os.path.abspath(os.pardir), define.CACHE_DIR, define.FACTOR_DIR,
+                                'factor_{0}_{1}.csv'.format(instrument_id, trade_date))
+    df = pd.read_csv(_factor_path)
     labels = []
     last_lst = list(df['last_price'])
     vol_lst = list(df['vol'])
     turnover_lst = list(df['turnover'])
     _len = len(last_lst)
+
     for idx in list(range(_len - windows_len)):
         _max = max(last_lst[idx + 1: idx + windows_len])
         _min = min(last_lst[idx + 1: idx + windows_len])
@@ -431,7 +460,9 @@ def train_model_ols(predict_windows=120,
                 acc_scores[item] = df_score[idx]
         top_features = df_corr['label_cumsum'].abs().sort_values(ascending=False)[1:top_k_features]
         print(list(top_features.index), top_features)
-        df_corr.to_csv('corr_reg_{0}_{1}_{2}.csv'.format(date, predict_windows, lag_windows))
+        _file_name = os.path.join(os.path.abspath(os.pardir), define.RESULT_DIR, define.TICK_MODEL_DIR,
+                                  'corr_reg_{0}_{1}_{2}.csv'.format(date, predict_windows, lag_windows))
+        df_corr.to_csv(_file_name)
     _scores = [item / (train_days - 1) for item in list(acc_scores.values())]
     _features = list(acc_scores.keys())
     _tmp = list(zip(_features, _scores))
@@ -488,3 +519,4 @@ if __name__ == '__main__':
                                 end_date=trade_dates[idx + train_days],
                                 train_days=train_days, product_id='RB')
                 idx += train_days
+                gc.collect()

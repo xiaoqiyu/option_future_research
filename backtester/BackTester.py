@@ -6,7 +6,7 @@
 # @File    : BackTester.py
 import time
 
-from define import *
+from ..utils.define import *
 from Factor import Factor
 from Position import Position
 from backtester.Account import Account
@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import hashlib
 from datetime import datetime
-from utils import is_trade
+from ..utils.utils import is_trade
 
 
 def get_tick_mkt(trade_date='', prev_date='', instrument_id='', product_id=''):

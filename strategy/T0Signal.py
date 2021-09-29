@@ -6,7 +6,7 @@
 # @File    : T0Signal.py
 
 from strategy.Signal import Signal
-from define import *
+import utils.define as define
 from backtester.Factor import Factor
 from backtester.Position import Position
 
@@ -29,7 +29,7 @@ class TOSignal(Signal):
 
         open_fee = kwargs.get('open_fee') or 1.51
         close_to_fee = kwargs.get('close_t0_fee') or 0.0
-        fee = (open_fee + close_to_fee)/multiplier
+        fee = (open_fee + close_to_fee) / multiplier
         start_tick = kwargs.get('start_tick') or 2
         long_lots_limit = kwargs.get('long_lots_limit') or 1
         short_lots_limit = kwargs.get('short_lots_limit') or 1
@@ -38,15 +38,15 @@ class TOSignal(Signal):
         _position = self.position.get_position(instrument_id)
 
         if len(self.factor.last_price) < start_tick:
-            return NO_SIGNAL
+            return define.NO_SIGNAL
         _long, _short, long_price, short_price = 0, 0, 0.0, 0.0
 
         if _position:
             for item in _position:
-                if item[0] == LONG:
+                if item[0] == define.LONG:
                     long_price = item[1]
                     _long += 1
-                elif item[0] == SHORT:
+                elif item[0] == define.SHORT:
                     short_price = item[1]
                     _short += 1
         # if factor.last_price[-1] > factor.last_price[-2] and factor.last_price[-1] > factor.vwap[
@@ -57,7 +57,7 @@ class TOSignal(Signal):
             #             factor.slope[-1]) > 0.8 and not _long:
             # print(factor.last_price, factor.slope)
             # print(_short, short_lots_limit)
-            return SHORT_OPEN
+            return define.SHORT_OPEN
         # if factor.last_price[-1] < factor.last_price[-2] and factor.last_price[-1] < factor.vwap[
         #     -1] + k2 * volitility and not _short:
         if (self.factor.slope[-1] < self.factor.slope[-2]) and (self.factor.slope[-2] > self.factor.slope[-3]) and abs(
@@ -66,14 +66,14 @@ class TOSignal(Signal):
             #             factor.slope[-1]) > 0.8 and not _short:
 
             # print(factor.last_price,factor.slope)
-            return LONG_OPEN
+            return define.LONG_OPEN
         # if factor.last_price[-1] < factor.last_price[-2] and _long and factor.last_price[-1] > long_price + stop_profit:
         if _long and (self.factor.last_price[-1] > long_price + stop_profit + fee or
                       self.factor.last_price[-1] < long_price - stop_loss - fee):
-            return LONG_CLOSE
+            return define.LONG_CLOSE
         # if factor.last_price[-1] > factor.last_price[-2] and _short and short_price > factor.last_price[-1] + stop_profit:
         if _short and (
                 short_price > self.factor.last_price[-1] + stop_profit + fee or self.factor.last_price[
             -1] > short_price + stop_loss + fee):
-            return SHORT_CLOSE
-        return NO_SIGNAL
+            return define.SHORT_CLOSE
+        return define.NO_SIGNAL
