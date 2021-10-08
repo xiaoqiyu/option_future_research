@@ -130,4 +130,3 @@ dmypy.json
 cache/
 results/
 *Signal.py~
-conf/.editorconfig
