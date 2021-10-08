@@ -129,5 +129,5 @@ dmypy.json
 .pyre/
 cache/
 results/
-*Signal.py~
+strategy/
 conf/.editorconfig
