@@ -130,4 +130,4 @@ dmypy.json
 cache/
 results/
 strategy/
-conf/
+conf/.editorconfig
