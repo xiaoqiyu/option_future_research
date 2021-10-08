@@ -5,10 +5,8 @@
 # @Site    : 
 # @File    : BackTester.py
 import time
-
-from ..utils.define import *
-from Factor import Factor
-from Position import Position
+from .Factor import Factor
+from .Position import Position
 from backtester.Account import Account
 from strategy.T0Signal import TOSignal
 from editorconfig import get_properties, EditorConfigError
@@ -18,35 +16,41 @@ import matplotlib.pyplot as plt
 import numpy as np
 import hashlib
 from datetime import datetime
-from ..utils.utils import is_trade
+import os
+import utils.utils as utils
+import utils.define as define
+from copy import deepcopy
 
 
 def get_tick_mkt(trade_date='', prev_date='', instrument_id='', product_id=''):
     # read mkt for curr trade date
     try:
-        df = pd.read_csv('cache/{0}/{1}.csv'.format(trade_date, product_id))
-        if df.shape[1] == len(cols):
-            df.columns = cols
+        _tick_mkt_path = utils.get_path([define.CACHE_DIR, trade_date.replace('-', ''), '{0}.csv'.format(product_id)])
+        df = pd.read_csv(_tick_mkt_path)
+        # df = pd.read_csv('cache/{0}/{1}.csv'.format(trade_date, product_id))
+        if df.shape[1] == len(define.cols):
+            df.columns = define.cols
     except Exception as ex:
         print('read mkt:{0},{1} with error:{2}'.format(trade_date, product_id, ex))
         return
-    curr_df = df[df.InstrumentID == instrument_id][selected_cols]
+    curr_df = df[df.InstrumentID == instrument_id][define.selected_cols]
     # print("record num:", curr_df.shape)
     # for data cache problem, cache the history data from 0617(and 0617 miss lots of record)
     if trade_date > '20210531':
         return curr_df
     # curr_df = curr_df.sort_values(by='UpdateTime', ascending=True)
     curr_df = curr_df[curr_df.UpdateTime <= '16:00:00']
-
     # read mkt from prev calender date(curr trade date)
     try:
-        df = pd.read_csv('cache/{0}/{1}.csv'.format(prev_date, product_id))
-        if df.shape[1] == len(cols):
-            df.columns = cols
+        _tick_mkt_path = utils.get_path([define.CACHE_DIR, prev_date.replace('-', ''), '{0}.csv'.format(product_id)])
+        df = pd.read_csv(_tick_mkt_path)
+        # df = pd.read_csv('cache/{0}/{1}.csv'.format(prev_date, product_id))
+        if df.shape[1] == len(define.cols):
+            df.columns = define.cols
     except Exception as ex:
         print('read mkt:{0},{1} with error:{2}'.format(prev_date, product_id, ex))
         return
-    prev_df = df[df.InstrumentID == instrument_id][selected_cols]
+    prev_df = df[df.InstrumentID == instrument_id][define.selected_cols]
     # print("record num:", prev_df.shape)
     prev_df = prev_df[prev_df.UpdateTime >= '20:50:00']
     # prev_df = prev_df.sort_values(by='UpdateTime', ascending=True)
@@ -54,53 +58,25 @@ def get_tick_mkt(trade_date='', prev_date='', instrument_id='', product_id=''):
     return prev_df.append(curr_df)
 
 
-def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
-    # file_name = 'C:\projects\pycharm\option_future_research\.editorconfig'
-    # backtesting_config = "{0}_{1}".format(product_id, trade_date)
+def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31', options={}):
     backtesting_config = ''
-    trade_dates = get_trade_dates()
-    try:
-        options = get_properties(file_name)
-    except EditorConfigError:
-        logging.warning("Error getting EditorConfig propterties", exc_info=True)
-    else:
-        for key, value in options.items():
-            backtesting_config = '{0},{1}:{2}'.format(backtesting_config, key, value)
-            # print("{0}:{1}".format(key, value))
-    # load daily market data
-    df = pd.read_csv(daily_cache_name)
-    df = df[df.mainCon == 1]
-    df = df[df.contractObject == product_id.upper()]
-    date_lst = [item.replace('-', '') for item in list(df.tradeDate)]
-    df['tradeDate1'] = date_lst
-    df = df[df.tradeDate1 == prev_date]
-    try:
-        row = df.values[0]
-    except Exception as ex:
-        print('missing daily mkt for:', trade_date)
-        return
-    open_price, high, low, close, settle = row[9: 14]
-    instrument_id = row[1]
-    # backtesting_config = "{0},{1}".format(instrument_id, backtesting_config)
+    if not options:
+        try:
+            _conf_file = utils.get_path([define.CONF_DIR,
+                                         define.CONF_FILE_NAME])
+            options = get_properties(_conf_file)
+        except EditorConfigError:
+            logging.warning("Error getting EditorConfig propterties", exc_info=True)
 
-    # get tick mkt
-
-    # try:
-    #     df = pd.read_csv('cache/{0}/{1}.csv'.format(trade_date, product_id))
-    #     if df.shape[1] == len(cols):
-    #         df.columns = cols
-    # except Exception as ex:
-    #     print('read mkt:{0},{1} with error:{2}'.format(trade_date, product_id, ex))
-    #     return
-
+    for key, value in options.items():
+        backtesting_config = '{0},{1}:{2}'.format(backtesting_config, key, value)
+    instrument_id_df = utils.get_instrument_ids(start_date=trade_date, end_date=trade_date, product_id=product_id)
+    instrument_id, trade_date, exchange = instrument_id_df.values[0]
     df = get_tick_mkt(trade_date=trade_date, prev_date=prev_date, instrument_id=instrument_id, product_id=product_id)
-    if not isinstance(df, pd.DataFrame):
-        return
-    print(trade_date, instrument_id, df.shape)
+    assert isinstance(df, pd.DataFrame)
+    logging.info('trade_date:{0}, instrument_id:{1}, shape:{2}'.format(trade_date, instrument_id, df.shape))
 
-    print(list(df.columns))
-    # tick format
-    m_df = df[df.InstrumentID == instrument_id][selected_cols]
+    m_df = df[df.InstrumentID == instrument_id][define.selected_cols]
     # m_df = m_df.sort_values(by='UpdateTime', ascending=True)
 
     values = m_df.values
@@ -108,7 +84,6 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
     position = Position()
     account = Account()
     signal = TOSignal(factor, position)
-
 
     volitility = float(options.get('volitility')) or 20.0
     k1 = float(options.get('k1')) or 0.2
@@ -137,7 +112,7 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
     update_factor_time = 0.0
     get_signal_time = 0.0
     # TODO remove hardcode
-    if len(values) < TICK_SIZE * 0.3:
+    if len(values) < define.TICK_SIZE * 0.3:
         print("-----------------------miss mkt for trade_date:", trade_date, len(values))
         return
     for idx, item in enumerate(values):
@@ -153,7 +128,7 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
         #
         # if _update_time > end_timestamp or _update_time < start_timestamp:
         #     continue
-        if not is_trade(start_timestamp, end_timestamp, _update_time):
+        if not utils.is_trade(start_timestamp, end_timestamp, _update_time):
             continue
         close_price = _last
         close_timestamp = _update_time
@@ -163,7 +138,7 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
                                     long_lots_limit=long_lots_limit, short_lots_limit=short_lots_limit,
                                     slope_upper=slope_upper,
                                     slope_lower=slope_lower, stop_loss=stop_loss,
-                                    multiplier=dict_multiplier.get(product_id))
+                                    multiplier=define.dict_multiplier.get(product_id))
         end_ts = time.time()
         get_signal_time += (end_ts - start_ts)
         # _signal = on_tick(factor, position, item, args, kwargs)
@@ -172,48 +147,50 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
         _trans_gap_time = datetime.strptime(_update_time, '%H:%M:%S') - datetime.strptime(_last_trans_time, '%H:%M:%S')
         if _trans_gap_time.seconds < delay_sec:
             continue
-        if _signal == LONG_OPEN:
+        if _signal == define.LONG_OPEN:
             holding_time = datetime.strptime(_update_time, '%H:%M:%S') - datetime.strptime(_update_time, '%H:%M:%S')
 
-            position.open_position(instrument_id, LONG, _last, _update_time)
+            position.open_position(instrument_id, define.LONG, _last, _update_time)
             account.add_transaction(
-                [idx, instrument_id, _text_lst[LONG_OPEN], _last, _last, open_fee, _update_time, _update_time,
+                [idx, instrument_id, _text_lst[define.LONG_OPEN], _last, _last, open_fee, _update_time, _update_time,
                  holding_time.seconds, 0.0])
             account.update_fee(open_fee)
 
-        elif _signal == SHORT_OPEN:
+        elif _signal == define.SHORT_OPEN:
 
             holding_time = datetime.strptime(_update_time, '%H:%M:%S') - datetime.strptime(_update_time, '%H:%M:%S')
-            position.open_position(instrument_id, SHORT, _last, _update_time)
+            position.open_position(instrument_id, define.SHORT, _last, _update_time)
             account.add_transaction(
-                [idx, instrument_id, _text_lst[SHORT_OPEN], _last, _last, open_fee, _update_time, _update_time,
+                [idx, instrument_id, _text_lst[define.SHORT_OPEN], _last, _last, open_fee, _update_time, _update_time,
                  holding_time.seconds, 0.0])
             account.update_fee(open_fee)
 
-        elif _signal == LONG_CLOSE:
-            _pos = position.get_position_side(instrument_id, LONG)
+        elif _signal == define.LONG_CLOSE:
+            _pos = position.get_position_side(instrument_id, define.LONG)
             if _pos:
                 holding_time = datetime.strptime(_update_time, '%H:%M:%S') - datetime.strptime(_pos[2], '%H:%M:%S')
 
-                position.close_position(instrument_id, LONG, _last, _update_time)
-                total_return += (_last - _pos[1]) * dict_multiplier.get(product_id) - fee
+                position.close_position(instrument_id, define.LONG, _last, _update_time)
+                total_return += (_last - _pos[1]) * define.dict_multiplier.get(product_id) - fee
 
                 account.add_transaction(
-                    [idx, instrument_id, _text_lst[LONG_CLOSE], _last, _pos[1], close_t0_fee, _pos[2], _update_time,
+                    [idx, instrument_id, _text_lst[define.LONG_CLOSE], _last, _pos[1], close_t0_fee, _pos[2],
+                     _update_time,
                      holding_time.seconds,
-                     (_last - _pos[1]) * dict_multiplier.get(product_id) - fee])
+                     (_last - _pos[1]) * define.dict_multiplier.get(product_id) - fee])
                 account.update_fee(close_t0_fee)
-        elif _signal == SHORT_CLOSE:
-            _pos = position.get_position_side(instrument_id, SHORT)
+        elif _signal == define.SHORT_CLOSE:
+            _pos = position.get_position_side(instrument_id, define.SHORT)
             if _pos:
                 holding_time = datetime.strptime(_update_time, '%H:%M:%S') - datetime.strptime(_pos[2], '%H:%M:%S')
-                position.close_position(instrument_id, SHORT, _last, _update_time)
-                total_return += (_pos[1] - _last) * dict_multiplier.get(product_id) - fee
+                position.close_position(instrument_id, define.SHORT, _last, _update_time)
+                total_return += (_pos[1] - _last) * define.dict_multiplier.get(product_id) - fee
 
                 account.add_transaction(
-                    [idx, instrument_id, _text_lst[SHORT_CLOSE], _last, _pos[1], close_t0_fee, _pos[2], _update_time,
+                    [idx, instrument_id, _text_lst[define.SHORT_CLOSE], _last, _pos[1], close_t0_fee, _pos[2],
+                     _update_time,
                      holding_time.seconds,
-                     (_pos[1] - _last) * dict_multiplier.get(product_id) - fee])
+                     (_pos[1] - _last) * define.dict_multiplier.get(product_id) - fee])
                 account.update_fee(close_t0_fee)
         else:  # NO_SIGNAL
             pass
@@ -222,16 +199,16 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
             #     for item in _pos:
             #         if item[0] == LONG:
             #             if _last    _last_price = item[1]
-    from copy import deepcopy
+
     _pos = position.get_position(instrument_id)
     total_return_risk = total_return
     total_risk = 0.0
     if _pos:
         _tmp_pos = deepcopy(_pos)
         for item in _tmp_pos:
-            if item[0] == LONG:
+            if item[0] == define.LONG:
                 holding_time = datetime.strptime(close_timestamp, '%H:%M:%S') - datetime.strptime(item[2], '%H:%M:%S')
-                _return = (close_price - item[1]) * dict_multiplier.get(product_id) - fee
+                _return = (close_price - item[1]) * define.dict_multiplier.get(product_id) - fee
                 # TODO position control
                 # if _return < stop_loss:
                 #     continue
@@ -240,14 +217,14 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
                 print('final long close with return:{0},total return after:{1}'.format(_return, total_return))
 
                 account.add_transaction(
-                    [idx, instrument_id, _text_lst[LONG_CLOSE], close_price, item[1], close_t0_fee, item[2],
+                    [idx, instrument_id, _text_lst[define.LONG_CLOSE], close_price, item[1], close_t0_fee, item[2],
                      close_timestamp, holding_time.seconds, _return])
                 account.update_fee(close_t0_fee)
-                position.close_position(instrument_id=instrument_id, long_short=LONG, price=close_price,
+                position.close_position(instrument_id=instrument_id, long_short=define.LONG, price=close_price,
                                         timestamp=close_timestamp)
             else:
                 holding_time = datetime.strptime(close_timestamp, '%H:%M:%S') - datetime.strptime(item[2], '%H:%M:%S')
-                _return = ((item[1] - close_price) * dict_multiplier.get(product_id) - fee)
+                _return = ((item[1] - close_price) * define.dict_multiplier.get(product_id) - fee)
                 # TODO position control
                 # if _return < stop_loss:
                 #     continue
@@ -256,10 +233,10 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
                 print('final short close with return:{0},total return after:{1}'.format(_return, total_return))
 
                 account.add_transaction(
-                    [idx, instrument_id, _text_lst[SHORT_CLOSE], close_price, item[1], close_t0_fee, item[2],
+                    [idx, instrument_id, _text_lst[define.SHORT_CLOSE], close_price, item[1], close_t0_fee, item[2],
                      close_timestamp, holding_time.seconds, _return])
                 account.update_fee(close_t0_fee)
-                position.close_position(instrument_id=instrument_id, long_short=SHORT, price=close_price,
+                position.close_position(instrument_id=instrument_id, long_short=define.SHORT, price=close_price,
                                         timestamp=close_timestamp)
 
     # _pos = position.get_position(instrument_id)
@@ -270,9 +247,9 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
     _idx_lst = list(range(len(factor.last_price)))
     fig = plt.figure()
     ax1 = fig.add_subplot(111)
-    ax1.plot(_idx_lst[PLT_START:PLT_END], factor.last_price[PLT_START:PLT_END])
-    ax1.plot(_idx_lst[PLT_START:PLT_END], factor.vwap[PLT_START:PLT_END])
-    ax1.plot(_idx_lst[PLT_START:PLT_END], factor.turning[PLT_START:PLT_END])
+    ax1.plot(_idx_lst[define.PLT_START:define.PLT_END], factor.last_price[define.PLT_START:define.PLT_END])
+    ax1.plot(_idx_lst[define.PLT_START:define.PLT_END], factor.vwap[define.PLT_START:define.PLT_END])
+    ax1.plot(_idx_lst[define.PLT_START:define.PLT_END], factor.turning[define.PLT_START:define.PLT_END])
     # ax1.plot(_idx_lst[:-10], factor.upper_bound[:-10], 'r')
     # ax1.plot(_idx_lst[:-10], factor.lower_bound[:-10], 'g')
     ts_idx = 0
@@ -304,13 +281,16 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
     ax2 = ax1.twinx()
     # ax2.plot(_idx_lst[PLT_START:PLT_END], factor.slope[PLT_START:PLT_END], 'r')
 
-    plt.savefig('results/{0}_{1}.jpg'.format(instrument_id, trade_date))
+    _ret_path = utils.get_path([define.RESULT_DIR, define.BT_DIR, '{0}_{1}.jpg'.format(instrument_id, trade_date)])
+    plt.savefig(_ret_path)
     # plt.show()
     trans_df = pd.DataFrame(account.transaction,
                             columns=['idx', 'instrument_id', 'direction', 'price', 'open_price', 'fee', 'open_ts',
                                      'close_ts', 'holding_time',
                                      'return'])
-    trans_df.to_csv('results/trans_{0}_{1}.csv'.format(instrument_id, trade_date), index=False)
+    _trans_path = utils.get_path(
+        [define.RESULT_DIR, define.BT_DIR, 'trans_{0}_{1}.csv'.format(instrument_id, trade_date)])
+    trans_df.to_csv(_trans_path, index=False)
     long_open, short_open, correct_long_open, wrong_long_open, correct_short_open, wrong_short_open = 0, 0, 0, 0, 0, 0
     total_fee = 0.0
     total_holding_time = 0.0
@@ -356,8 +336,9 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
     # _key = '{0}_{1}'.format(trade_date, instrument_id)
     result_fname_digest = hashlib.sha256(bytes(backtesting_config, encoding='utf-8')).hexdigest()
     # f.write("{0}:{1}\n".format(backtesting_config, result_fname_digest))
+    _ret_path = utils.get_path([define.RESULT_DIR, define.BT_DIR, '{0}.csv'.format(result_fname_digest)])
     try:
-        result_df = pd.read_csv('results/{0}.csv'.format(result_fname_digest))
+        result_df = pd.read_csv(_ret_path)
     except Exception as ex:
         result_df = pd.DataFrame(
             {'trade_date': [], 'product_id': [], 'instrument_id': [], 'total_return_after_fee': [],
@@ -377,7 +358,8 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
          'wrong_short_open': wrong_short_open, 'average_holding_time': average_holding_time,
          'max_holding_time': max_holding_time, 'min_holding_time': min_holding_time
          }, ignore_index=True)
-    result_df.to_csv('results/{0}.csv'.format(result_fname_digest), index=False)
+
+    result_df.to_csv(_ret_path, index=False)
     # f.write(
     #     "${0}\ntotal_return:{1},total_fee:{2},precision:{3},correct_long_open:{4},wrong_long_open:{5},correct_short_open:{6},"
     #     "wrong_short_open:{7},short_open:{8},long_open:{9},total_risk:{10}\n".format(
@@ -390,7 +372,8 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31'):
 
 
 if __name__ == '__main__':
-    dates = get_trade_dates()
+    # dates = get_trade_dates()
+    dates = ['20210104', '20210105']
     for idx, d in enumerate(dates):
         if idx < 1:
             continue

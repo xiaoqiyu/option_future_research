@@ -7,8 +7,9 @@
 
 import numpy as np
 import pandas
-
-from define import *
+import utils.utils as utils
+import utils.define as define
+import os
 
 
 class Factor(object):
@@ -67,7 +68,7 @@ class Factor(object):
             _tmp_turnover = turnover
             self.vol.append(_tmp_vol)
             self.turnover.append(_tmp_turnover)
-            _vwap_val = (_tmp_turnover) / (dict_multiplier.get(self.product_id) * (_tmp_vol))
+            _vwap_val = (_tmp_turnover) / (define.dict_multiplier.get(self.product_id) * (_tmp_vol))
 
             # else:
             #     _tmp_vol = vol - self.open_vol
@@ -130,6 +131,6 @@ class Factor(object):
                                       # 'price_high': self.price_highest,
                                       # 'price_low': self.price_lowest
                                       })
-        # factor_df['slope_rank'] = factor_df['slope'].rank()
-        factor_df.to_csv('{0}/factor_{1}_{2}.csv'.format(factor_file_path, self.instrument_id, self.trade_date),
-                         index=False)
+        _factor_path = utils.get_path([define.CACHE_DIR, define.FACTOR_DIR,
+                                       'factor_{0}_{1}.csv'.format(self.instrument_id, self.trade_date)])
+        factor_df.to_csv(_factor_path, index=False)

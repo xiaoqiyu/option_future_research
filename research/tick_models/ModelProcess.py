@@ -14,7 +14,6 @@ from uqer import DataAPI
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from sklearn import metrics
-import utils.define as define
 from sklearn.feature_selection import SelectKBest
 from sklearn.feature_selection import mutual_info_classif
 from sklearn.linear_model import LogisticRegression
@@ -27,9 +26,14 @@ import logging
 import os
 import gc
 
+import utils.define as define
+import utils.utils as utils
+
 try:
-    _conf_file = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.CONF_DIR,
-                              define.CONF_FILE_NAME)
+    # _conf_file = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.CONF_DIR,
+    #                           define.CONF_FILE_NAME)
+    _conf_file = utils.get_path([define.CONF_DIR,
+                              define.CONF_FILE_NAME])
     options = get_properties(_conf_file)
 except EditorConfigError:
     logging.warning("Error getting EditorConfig propterties", exc_info=True)
@@ -72,16 +76,14 @@ def get_factor(trade_date="20210701", predict_windows=1200, lag_long=600,
     _exchange_path = {'XZCE': 'zc', 'XSGE': 'sc', 'XSIE': 'ine', 'XDCE': 'dc'}.get(exchange_cd)
     _tick_mkt_path = os.path.join(define.TICK_MKT_DIR, _exchange_path,
                                   '{0}_{1}.csv'.format(instrument_id, trade_date.replace('-', '')))
-    tick_mkt = pd.read_csv(_tick_mkt_path, encoding='gbk')
-    # tick_mkt = pd.read_csv(
-    #     "C:\projects\l2mkt\FutAC_TickKZ_PanKou_Daily_202107\{0}\\{1}_{2}.csv".format(_exchange_path, instrument_id,
-    #                                                                                  trade_date.replace('-', '')),
-    #     encoding='gbk')
 
+    tick_mkt = pd.read_csv(_tick_mkt_path, encoding='gbk')
     tick_mkt.columns = define.tb_cols
     _flag = [_is_trading_time(item.split()[-1]) for item in list(tick_mkt['UpdateTime'])]
     tick_mkt = tick_mkt[_flag]
     tick_mkt['log_return'] = tick_mkt['LastPrice'].rolling(2).apply(lambda x: math.log(list(x)[-1] / list(x)[0]))
+    tick_mkt['log_return_short'] = tick_mkt['log_return'].rolling(lag_short).sum()
+    tick_mkt['log_return_long'] = tick_mkt['log_return'].rolling(lag_long).sum()
     tick_mkt['label_reg'] = tick_mkt['log_return'].rolling(predict_windows).sum().shift(1 - predict_windows)
     lst_ret_max = list(tick_mkt['label_reg'].rolling(predict_windows).max())
     lst_ret_min = list(tick_mkt['label_reg'].rolling(predict_windows).min())
@@ -93,13 +95,12 @@ def get_factor(trade_date="20210701", predict_windows=1200, lag_long=600,
     sum_min = []
 
     _x, _y = tick_mkt.shape
-
     label_cumsum = []
 
     for idx in range(_x):
         _cum_sum = tick_mkt['log_return'][idx:idx + predict_windows].cumsum()
-        label_cumsum.append(list(_cum_sum)[-1])
-        # label_cumsum.append(_cum_sum.max())
+        # label_cumsum.append(list(_cum_sum)[-1])
+        label_cumsum.append(_cum_sum.max())
         sum_max.append(_cum_sum.max())
         sum_min.append(_cum_sum.min())
 
@@ -159,7 +160,7 @@ def get_factor(trade_date="20210701", predict_windows=1200, lag_long=600,
     tick_mkt['trend_long'] = tick_mkt['LastPrice'].rolling(lag_long).apply(
         lambda x: (list(x)[-1] - list(x)[0]) / lag_long)
     tick_mkt['trenddiff'] = tick_mkt['trend_short'] - tick_mkt['trend_long']
-    tick_mkt['trend_ls_ratio'] = tick_mkt['trend_short'] / tick_mkt['trend_short']
+    tick_mkt['trend_ls_ratio'] = tick_mkt['trend_short'] / tick_mkt['trend_long']
     tick_mkt['vwap'] = tick_mkt['Turnover'] / tick_mkt['Volume']
     tick_mkt['vol_short'] = tick_mkt['Volume'].rolling(lag_short).sum()
     tick_mkt['vol_long'] = tick_mkt['Volume'].rolling(lag_long).sum()
@@ -174,19 +175,31 @@ def get_factor(trade_date="20210701", predict_windows=1200, lag_long=600,
     tick_mkt['macd'] = macd
     tick_mkt['dif'] = dif
     tick_mkt['dea'] = dea
-    # plt.plot(dif[:100], c='green')
-    # plt.plot(dea[:100], c='blue')
-    # plt.plot(macd[:100], c='red')
-
-    # tick_mkt[['dif', 'dea', 'macd']].plot(kind='bar', grid=True, figsize=(9, 7))
-    # plt.show()
+    tick_mkt['bs_tag'] = tick_mkt['LastPrice'].rolling(2).apply(lambda x: 1 if list(x)[-1] > list(x)[0] else -1)
+    tick_mkt['bs_vol'] = tick_mkt['bs_tag'] * tick_mkt['Volume']
+    tick_mkt['bs_vol_long'] = tick_mkt['bs_vol'].rolling(lag_long).sum()
+    tick_mkt['bs_vol_short'] = tick_mkt['bs_vol'].rolling(lag_short).sum()
+    tick_mkt['bs_vol_diff'] = tick_mkt['bs_vol_short'] - tick_mkt['bs_vol_long']
+    tick_mkt['bs_vol_ls_ratio'] = tick_mkt['bs_vol_short'] / tick_mkt['bs_vol_long']
+    tick_mkt['bs2vol_ratio_short'] = tick_mkt['bs_vol_short'] / tick_mkt['vol_short']
+    tick_mkt['bs2vol_ratio_long'] = tick_mkt['bs_vol_long'] / tick_mkt['vol_long']
+    tick_mkt['bs2vol_ls_ratio'] = tick_mkt['bs2vol_ratio_short'] / tick_mkt['bs2vol_ratio_long']
+    _factor_lst = list(tick_mkt.columns)
+    print(_factor_lst)
+    for col in define.skip_raw_cols:
+        try:
+            _factor_lst.remove(col)
+        except Exception as ex:
+            print('col:{0} not exist'.format(col))
     tick_mkt = tick_mkt.dropna()
-    # plot_factor(list(tick_mkt['macd'])[:100], list(tick_mkt['LastPrice'])[:100])
-    # plot_factor(list(tick_mkt['trenddiff'])[:100], list(tick_mkt['LastPrice'])[:100])
-    return tick_mkt[
-        ['UpdateTime', 'oi', 'oir', 'aoi', 'label_clf', 'buy_sell_spread', 'trend_short', 'trend_long', 'trenddiff',
-         'vol_ls_ratio', 'turnover_ls_ratio', 'vwap_ls_ratio', 'label_reg', 'dif', 'dea', 'macd', 'label_cumsum',
-         'open_close_ratio', 'trend_ls_ratio']]
+    # #TODO HACK FOR TEST
+    # _factor_lst = ['UpdateTime', 'macd', 'trend_ls_ratio','label_reg','label_clf','label_cumsum']
+    return tick_mkt[_factor_lst]
+
+
+def get_selected_factor(factor_lst=[]):
+    factor_lst.remove('Exchange')
+    factor_lst.remove('Instrument')
 
 
 def train_model_reg(predict_windows=120,
@@ -198,8 +211,6 @@ def train_model_reg(predict_windows=120,
     df = df[df.contractObject == product_id][['ticker', 'tradeDate', 'exchangeCD']]
     train_dates = df.iloc[-train_days:-1, :]
     test_dates = df.iloc[-1, :]
-    model1 = SelectKBest(mutual_info_classif, k=top_k_features)
-    model2 = LogisticRegression()
     acc_scores = {}
     factor_lst = []
     cnt = 0
@@ -231,7 +242,7 @@ def train_model_reg(predict_windows=120,
         top_features = df_corr['label_cumsum'].abs().sort_values(ascending=False)[1:top_k_features]
         print(list(top_features.index), top_features)
         _file_name = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR, define.TICK_MODEL_DIR,
-                                  'corr_reg_{0}.csv'.format(date))
+                                  'corr_reg_{0}_{1}_{2}.csv'.format(date, predict_windows, lag_windows))
         df_corr.to_csv(_file_name)
     _scores = [item / (train_days - 1) for item in list(acc_scores.values())]
     _features = list(acc_scores.keys())
@@ -240,8 +251,11 @@ def train_model_reg(predict_windows=120,
     print("top features", _tmp[:top_k_features])
     top_feature_lst = [item[0] for item in _tmp[:top_k_features]]
     for df_factor in factor_lst:
-        lin_reg_model.fit(df_factor[top_feature_lst], df_factor['label_cumsum'])
-        del df_factor
+        try:
+            lin_reg_model.fit(df_factor[top_feature_lst], df_factor['label_cumsum'])
+            del df_factor
+        except Exception as ex:
+            print('train error')
 
         # print('intercept:', lin_reg_model.intercept_)
         # print('coef_:{0}\n'.format(list(zip(top_feature_lst, lin_reg_model.coef_))))
@@ -259,7 +273,11 @@ def train_model_reg(predict_windows=120,
     ret_str = 'rmse:{0}, r2:{1}, date:{2},predict windows:{3}, lag windows:{4}\n'.format(
         np.sqrt(metrics.mean_squared_error(df_factor['label_cumsum'], y_pred)),
         metrics.r2_score(df_factor['label_cumsum'], y_pred), test_dates[1], predict_windows, lag_windows)
-
+    r_ret = [item-y_pred[idx] for idx,item in enumerate(list(df_factor['label_cumsum']))]
+    # plt.plot(y_pred)
+    # plt.plot(df_factor['label_cumsum'])
+    plt.plot(r_ret)
+    plt.show()
     _summary_path = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR, define.TICK_MODEL_DIR,
                                  'summary.txt')
     with open(_summary_path, 'a') as f:
@@ -460,7 +478,7 @@ def train_model_ols(predict_windows=120,
                 acc_scores[item] = df_score[idx]
         top_features = df_corr['label_cumsum'].abs().sort_values(ascending=False)[1:top_k_features]
         print(list(top_features.index), top_features)
-        _file_name = os.path.join(os.path.abspath(os.pardir), define.RESULT_DIR, define.TICK_MODEL_DIR,
+        _file_name = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR, define.TICK_MODEL_DIR,
                                   'corr_reg_{0}_{1}_{2}.csv'.format(date, predict_windows, lag_windows))
         df_corr.to_csv(_file_name)
     _scores = [item / (train_days - 1) for item in list(acc_scores.values())]
@@ -507,15 +525,15 @@ if __name__ == '__main__':
     num_date = len(trade_dates)
     idx = 0
     # [20, 60, 120, 600, 1200]
-    predict_window_lst = [20, 60, 120, 600, 1200]  # 10s, 30s,1min,5min,10min
-    lag_window_lst = [20, 60, 120, 600]  # 10s, 30s,1min,5min,
+    predict_window_lst = [120, 1200]  # 10s, 30s,1min,5min,10min
+    lag_window_lst = [60, 120, 600]  # 10s, 30s,1min,5min,
     for predict_win in predict_window_lst:
         for lag_win in lag_window_lst:
             print('train for predict windows:{0} and lag_windows:{1}-----------'.format(predict_win, lag_win))
             while idx < num_date - train_days:
                 train_model_reg(predict_windows=predict_win,
                                 lag_windows=lag_win,
-                                stop_profit=0.001, stop_loss=0.01, top_k_features=5, start_date=trade_dates[idx],
+                                stop_profit=0.001, stop_loss=0.01, top_k_features=10, start_date=trade_dates[idx],
                                 end_date=trade_dates[idx + train_days],
                                 train_days=train_days, product_id='RB')
                 idx += train_days
