@@ -6,6 +6,7 @@
 # @File    : utils.py
 
 import time
+import json
 import math
 import uqer
 import pprint
@@ -104,6 +105,19 @@ def get_contract(instrument_id=''):
 def get_mul_num(instrument_id=''):
     df = get_contract(instrument_id=instrument_id)
     return df['contMultNum'].values[0]
+
+def write_json_file(file_path='', data=None):
+    if not data:
+        return
+    with open(file_path, 'w') as outfile:
+        j_data = json.dumps(data)
+        outfile.write(j_data)
+
+
+def load_json_file(filepath=''):
+    with open(filepath) as infile:
+        contents = infile.read()
+        return json.loads(contents)
 
 
 if __name__ == "__main__":

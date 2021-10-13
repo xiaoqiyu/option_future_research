@@ -57,8 +57,9 @@ def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', 
     factor = Factor(product_id=product_id, instrument_id=instrument_id, trade_date=trade_date)
     position = Position()
     account = Account()
-    signal_map = {'T0Signal': TOSignal(factor, position),
-                  'RegSignal': RegSignal(factor, position)}
+    signal_map = {'T0Signal': TOSignal(factor=factor, position=position),
+                  'RegSignal': RegSignal(factor=factor, position=position, instrument_id=instrument_id,
+                                         trade_date=trade_date)}
     # signal = TOSignal(factor, position)
     signal = signal_map.get(signal_name)
 
@@ -111,6 +112,7 @@ def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', 
         options.update({'multiplier': _mul_num})
         options.update({'fee': fee})
         options.update({'tick': item})
+        options.update({'trade_date': trade_date})
         # get signal
         s1 = time.time()
         _signal = signal.get_signal(params=options)
@@ -223,7 +225,9 @@ def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', 
 
                 total_return += _return
                 total_risk += item[1]
-                print('final long close with return:{0},total return after:{1}'.format(_return, total_return))
+                print('final long close with return:{0},total return after:{1} for trade_date:{2}'.format(_return,
+                                                                                                          total_return,
+                                                                                                          trade_date))
 
                 account.add_transaction(
                     [idx, instrument_id, _text_lst[define.LONG_CLOSE], close_price, item[1], close_t0_fee, item[2],

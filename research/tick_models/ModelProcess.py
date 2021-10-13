@@ -33,7 +33,7 @@ try:
     # _conf_file = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.CONF_DIR,
     #                           define.CONF_FILE_NAME)
     _conf_file = utils.get_path([define.CONF_DIR,
-                              define.CONF_FILE_NAME])
+                                 define.CONF_FILE_NAME])
     options = get_properties(_conf_file)
 except EditorConfigError:
     logging.warning("Error getting EditorConfig propterties", exc_info=True)
@@ -271,20 +271,36 @@ def train_model_reg(predict_windows=120,
     ret_str = 'rmse:{0}, r2:{1}, date:{2},predict windows:{3}, lag windows:{4}\n'.format(
         np.sqrt(metrics.mean_squared_error(df_factor['label_cumsum'], y_pred)),
         metrics.r2_score(df_factor['label_cumsum'], y_pred), test_dates[1], predict_windows, lag_windows)
-    r_ret = [item-y_pred[idx] for idx,item in enumerate(list(df_factor['label_cumsum']))]
+    r_ret = [item - y_pred[idx] for idx, item in enumerate(list(df_factor['label_cumsum']))]
     # plt.plot(y_pred)
     # plt.plot(df_factor['label_cumsum'])
-    plt.plot(r_ret)
-    plt.show()
-    _summary_path = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR, define.TICK_MODEL_DIR,
-                                 'summary.txt')
+    # plt.plot(r_ret)
+    # plt.show()
+    # _summary_path = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR, define.TICK_MODEL_DIR,
+    #                              'summary.txt')
+    # _evalute_path = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR, define.TICK_MODEL_DIR,
+    #                              'model_evaluate.json')
+    _summary_path = utils.get_path([define.RESULT_DIR, define.TICK_MODEL_DIR,
+                                    'summary.txt'])
+    _evalute_path = utils.get_path([define.RESULT_DIR, define.TICK_MODEL_DIR,
+                                    'model_evaluate.json'])
     with open(_summary_path, 'a') as f:
         f.write(ret_str)
     # print('rmse:', np.sqrt(metrics.mean_squared_error(df_factor['label_cumsum'], y_pred)), 'r2:',
     #       metrics.r2_score(df_factor['label_cumsum'], y_pred))
+
+    _model_evaluate = utils.load_json_file(_evalute_path) or dict()
+    _ret_lst = _model_evaluate.get('{0}_{1}'.format(instrument_id, test_dates[1].replace('-', ''))) or list()
+    _ret_lst.append([np.sqrt(metrics.mean_squared_error(df_factor['label_cumsum'], y_pred)),
+                     metrics.r2_score(df_factor['label_cumsum'], y_pred), test_dates[1], predict_windows,
+                     lag_windows])
+    _model_evaluate.update({'{0}_{1}'.format(instrument_id, test_dates[1].replace('-', '')): _ret_lst})
+    utils.write_json_file(_evalute_path, _model_evaluate)
+
     df_pred = pd.DataFrame({'UpdateTime': df_factor['UpdateTime'], 'pred': y_pred})
     _file_name = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR, define.TICK_MODEL_DIR,
-                              'df_pred_{0}_{1}_{2}.csv'.format(date, predict_windows, lag_windows))
+                              'pred_{0}_{1}_{2}_{3}.csv'.format(instrument_id, test_dates[1].replace('-', ''),
+                                                                predict_windows, lag_windows))
     df_pred.to_csv(_file_name, index=False)
     del df_factor
     # plt.plot(y_pred)
@@ -351,7 +367,6 @@ def train_model_clf(predict_windows=120,
     _update_time = list(df_factor['UpdateTime'])
     _update_time_str = [item.split()[-1] for item in _update_time]
     y_pred = model2.predict(df_factor[sorted_features])
-    # print("model scores:----------", model1.scores_)
     y_pred = model2.predict(model1.transform(df_factor[cols]))
     # if there might be class imbalance, then  micro is preferable since micro-average will aggregate the contributions
     # of all classes to compute the average metric, while macro-average will compute the metric independently for each
@@ -373,6 +388,7 @@ def train_model_clf(predict_windows=120,
     print('true vs pred:', '(1,{},{},{})'.format(true1, pred1, num_prec1 / pred1 if pred1 > 0 else 0))
     print('true vs pred:', '(2,{},{},{})'.format(true2, pred2, num_prec2 / pred2 if pred2 > 0 else 0))
 
+    # scores for clf models
     # score = metrics.precision_score(y_pred, df_factor['label_clf'], average='macro')
     # print("precision macro score:", score)
     # score = metrics.precision_score(y_pred, df_factor['label_clf'], average='micro')
