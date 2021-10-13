@@ -15,27 +15,30 @@ class TOSignal(Signal):
     def __init__(self, factor, position):
         super().__init__(factor, position)
 
-    def get_signal(self, *args, **kwargs):
+    def get_signal(self, params={}):
         assert isinstance(self.factor, Factor)
         assert isinstance(self.position, Position)
-        volitility = kwargs.get('volitility') or 20.0
-        k1 = kwargs.get('k1') or 1.0
-        k2 = kwargs.get('k2') or 1.0
-        instrument_id = kwargs.get('instrument_id')
+        volitility = float(params.get('volitility')) or 20.0
+        k1 = float(params.get('k1')) or 1.0
+        k2 = float(params.get('k2')) or 1.0
+        instrument_id = params.get('instrument_id')
         # adjust by multiplier
-        stop_profit = kwargs.get('stop_profit') or 5.0
-        stop_loss = kwargs.get('stop_loss') or 20.0
-        multiplier = kwargs.get('multiplier') or 10
+        stop_profit = float(params.get('stop_profit')) or 5.0
+        stop_loss = float(params.get('stop_loss')) or 20.0
+        multiplier = int(params.get('multiplier')) or 10
 
-        open_fee = kwargs.get('open_fee') or 1.51
-        close_to_fee = kwargs.get('close_t0_fee') or 0.0
+        open_fee = float(params.get('open_fee')) or 1.51
+        close_to_fee = float(params.get('close_t0_fee')) or 0.0
         fee = (open_fee + close_to_fee) / multiplier
-        start_tick = kwargs.get('start_tick') or 2
-        long_lots_limit = kwargs.get('long_lots_limit') or 1
-        short_lots_limit = kwargs.get('short_lots_limit') or 1
-        slope_upper = kwargs.get('slope_upper') or 1.0
-        slope_lower = kwargs.get('slope_lower') or -1.0
+        start_tick = int(params.get('start_tick')) or 2
+        long_lots_limit = int(params.get('long_lots_limit')) or 1
+        short_lots_limit = int(params.get('short_lots_limit')) or 1
+        slope_upper = float(params.get('slope_upper')) or 1.0
+        slope_lower = float(params.get('slope_lower')) or -1.0
         _position = self.position.get_position(instrument_id)
+
+        if params.get('tick')[2].split()[1]<'21:00:00.000':
+            print('check')
 
         if len(self.factor.last_price) < start_tick:
             return define.NO_SIGNAL

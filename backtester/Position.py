@@ -26,7 +26,8 @@ class Position(object):
 
     def get_position_side(self, instrument_id, side):
         _pos_lst = self.position.get(instrument_id)
-        for item in _pos_lst:
-            if item[0] == side:
-                return item
+        if _pos_lst:
+            for item in _pos_lst:
+                if item[0] == side:
+                    return item
         return

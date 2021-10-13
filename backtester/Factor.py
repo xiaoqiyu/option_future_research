@@ -41,20 +41,24 @@ class Factor(object):
 
     # @timeit
     def update_factor(self, tick=[], *args, **kwargs):
-        last_price = tick[4]
-        vol = tick[3]
-        turnover = tick[2]
-        _update_time = tick[1]
+        #values from tick
+        last_price = tick[3]
+        vol = tick[7]
+        turnover = tick[6]
+        _update_time = tick[2]
+        bid_price1, ask_price1, bid_vol1, ask_vol1 = tick[-4:]
+
         _range = kwargs.get('range') or 20
         k1 = kwargs.get('k1') or 0.2
         k2 = kwargs.get('k2') or 0.2
         idx = kwargs.get('idx') or 0
+        _mul_num = kwargs.get('multiplier') or 1.0
         self.open_turnover = turnover if self.open_turnover < 0 else self.open_turnover
         self.open_vol = vol if self.open_vol < 0 else self.open_vol
         self.last_price.append(last_price)
         self.update_time.append(_update_time)
         # "BidPrice1", "BidVolume1", "AskPrice1", "AskVolume1",
-        ask_price1, ask_vol1, bid_price1, bid_vol1 = tick[-4:]
+
         self.spread.append(ask_price1 - bid_price1)
         self.b2s_vol.append(bid_vol1 / ask_vol1 if ask_vol1 > 0 else 1.0)
         self.b2s_turnover.append(
@@ -68,15 +72,7 @@ class Factor(object):
             _tmp_turnover = turnover
             self.vol.append(_tmp_vol)
             self.turnover.append(_tmp_turnover)
-            _vwap_val = (_tmp_turnover) / (define.dict_multiplier.get(self.product_id) * (_tmp_vol))
-
-            # else:
-            #     _tmp_vol = vol - self.open_vol
-            #     _tmp_turnover = turnover - self.open_turnover
-            #     self.vol.append(_tmp_vol)
-            #     self.turnover.append(_tmp_turnover)
-            #     _vwap_val = _tmp_turnover / (
-            #             dict_multiplier.get(self.product_id) * (_tmp_vol))
+            _vwap_val = (_tmp_turnover) / (_mul_num * (_tmp_vol))
 
         except Exception as ex:
             if self.vwap:

@@ -16,10 +16,13 @@ import time
 import os
 
 if __name__ == "__main__":
-    product_id = 'm'
+
+    # df = utils.get_contract(instrument_id='rb2201')
+    # print(df)
+    # _num = utils.get_mul_num(instrument_id='rb2201')
+    # print(_num)
+    product_id = 'rb'
     total_return, total_fee, precision = 0.0, 0.0, []
-    # test_dates = [('20210401', '2021-03-31'),
-    #               ('20210402', '2021-04-01')]
     backtesting_config = ''
     try:
         _conf_file = utils.get_path([define.CONF_DIR, define.CONF_FILE_NAME])
@@ -33,19 +36,18 @@ if __name__ == "__main__":
     _ret_path = utils.get_path([define.RESULT_DIR, define.BT_DIR, 'results_{0}.txt'.format(product_id)])
     f = open(_ret_path, "a")
     result_fname_digest = hashlib.sha256(bytes(backtesting_config, encoding='utf-8')).hexdigest()
+    print('digest', result_fname_digest)
     f.write("{0}:{1}\n".format(backtesting_config, result_fname_digest))
-    dates = ['20210104', '20210105']
+    dates = ['20210707', '20210708', '20210709']
     for idx, trade_date in enumerate(dates):
-        if idx < 1:
-            continue
+        print('start back test for date:{0}'.format(trade_date))
         start_ts = time.time()
         ret = backtesting(product_id=product_id, trade_date=trade_date.strip().replace('-', ''),
-                          prev_date=dates[idx - 1].strip().replace('-', ''), options=options)
+                          signal_name='RegSignal', result_fname_digest=result_fname_digest, options=options)
         end_ts = time.time()
         print("back testing time:", end_ts - start_ts)
         if ret:
             _total_return, _total_fee, _precision = ret
             total_return += _total_return
             total_fee += _total_fee
-        break
     print(total_return, total_fee, precision)

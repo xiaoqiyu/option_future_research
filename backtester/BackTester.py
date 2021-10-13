@@ -9,6 +9,7 @@ from .Factor import Factor
 from .Position import Position
 from backtester.Account import Account
 from strategy.T0Signal import TOSignal
+from strategy.RegSignal import RegSignal
 from editorconfig import get_properties, EditorConfigError
 import pandas as pd
 import logging
@@ -22,43 +23,8 @@ import utils.define as define
 from copy import deepcopy
 
 
-def get_tick_mkt(trade_date='', prev_date='', instrument_id='', product_id=''):
-    # read mkt for curr trade date
-    try:
-        _tick_mkt_path = utils.get_path([define.CACHE_DIR, trade_date.replace('-', ''), '{0}.csv'.format(product_id)])
-        df = pd.read_csv(_tick_mkt_path)
-        # df = pd.read_csv('cache/{0}/{1}.csv'.format(trade_date, product_id))
-        if df.shape[1] == len(define.cols):
-            df.columns = define.cols
-    except Exception as ex:
-        print('read mkt:{0},{1} with error:{2}'.format(trade_date, product_id, ex))
-        return
-    curr_df = df[df.InstrumentID == instrument_id][define.selected_cols]
-    # print("record num:", curr_df.shape)
-    # for data cache problem, cache the history data from 0617(and 0617 miss lots of record)
-    if trade_date > '20210531':
-        return curr_df
-    # curr_df = curr_df.sort_values(by='UpdateTime', ascending=True)
-    curr_df = curr_df[curr_df.UpdateTime <= '16:00:00']
-    # read mkt from prev calender date(curr trade date)
-    try:
-        _tick_mkt_path = utils.get_path([define.CACHE_DIR, prev_date.replace('-', ''), '{0}.csv'.format(product_id)])
-        df = pd.read_csv(_tick_mkt_path)
-        # df = pd.read_csv('cache/{0}/{1}.csv'.format(prev_date, product_id))
-        if df.shape[1] == len(define.cols):
-            df.columns = define.cols
-    except Exception as ex:
-        print('read mkt:{0},{1} with error:{2}'.format(prev_date, product_id, ex))
-        return
-    prev_df = df[df.InstrumentID == instrument_id][define.selected_cols]
-    # print("record num:", prev_df.shape)
-    prev_df = prev_df[prev_df.UpdateTime >= '20:50:00']
-    # prev_df = prev_df.sort_values(by='UpdateTime', ascending=True)
-
-    return prev_df.append(curr_df)
-
-
-def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31', options={}):
+def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', result_fname_digest='', options={}):
+    # load back test config
     backtesting_config = ''
     if not options:
         try:
@@ -70,26 +36,33 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31', o
 
     for key, value in options.items():
         backtesting_config = '{0},{1}:{2}'.format(backtesting_config, key, value)
-    instrument_id_df = utils.get_instrument_ids(start_date=trade_date, end_date=trade_date, product_id=product_id)
-    instrument_id, trade_date, exchange = instrument_id_df.values[0]
-    df = get_tick_mkt(trade_date=trade_date, prev_date=prev_date, instrument_id=instrument_id, product_id=product_id)
-    assert isinstance(df, pd.DataFrame)
-    logging.info('trade_date:{0}, instrument_id:{1}, shape:{2}'.format(trade_date, instrument_id, df.shape))
 
-    m_df = df[df.InstrumentID == instrument_id][define.selected_cols]
+    # get instrument id and exchange id
+    instrument_id_df = utils.get_instrument_ids(start_date=trade_date, end_date=trade_date, product_id=product_id)
+    instrument_id, trade_date, exchange_cd = instrument_id_df.values[0]
+
+    _mul_num = utils.get_mul_num(instrument_id=instrument_id)
+    _tick_mkt_path = os.path.join(define.TICK_MKT_DIR, define.exchange_map.get(exchange_cd),
+                                  '{0}_{1}.csv'.format(instrument_id, trade_date.replace('-', '')))
+
+    tick_mkt = pd.read_csv(_tick_mkt_path, encoding='gbk')
+    tick_mkt.columns = define.tb_cols
+    logging.info('trade_date:{0}, instrument_id:{1}, shape:{2}'.format(trade_date, instrument_id, tick_mkt.shape))
+    # m_df = df[df.InstrumentID == instrument_id][define.selected_cols]
     # m_df = m_df.sort_values(by='UpdateTime', ascending=True)
 
-    values = m_df.values
+    values = tick_mkt.values
+
+    # init factor, position account signal
     factor = Factor(product_id=product_id, instrument_id=instrument_id, trade_date=trade_date)
     position = Position()
     account = Account()
-    signal = TOSignal(factor, position)
+    signal_map = {'T0Signal': TOSignal(factor, position),
+                  'RegSignal': RegSignal(factor, position)}
+    # signal = TOSignal(factor, position)
+    signal = signal_map.get(signal_name)
 
-    volitility = float(options.get('volitility')) or 20.0
-    k1 = float(options.get('k1')) or 0.2
-    k2 = float(options.get('k2')) or 0.2
-    # # instrument_id = kwargs.get('instrument_id')
-    # # adjust by multiplier
+    # process backtest parameter
     stop_profit = float(options.get('stop_profit')) or 5.0
     stop_loss = float(options.get('stop_loss')) or 20.0
     print('trade_date:{0}-----------------'.format(trade_date))
@@ -97,134 +70,181 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31', o
     open_fee = float(options.get('open_fee')) or 3.0
     close_t0_fee = float(options.get('close_t0_fee')) or 0.0
     fee = open_fee + close_t0_fee
-    start_tick = int(options.get('start_tick')) or 2
-    long_lots_limit = int(options.get('long_lots_limit')) or 1
-    short_lots_limit = int(options.get('short_lots_limit')) or 1
-    slope_upper = float(options.get('slope_upper')) or 1.0
-    slope_lower = float(options.get('slope_lower')) or -1.0
     start_timestamp = options.get('start_timestamp') or '09:05:00'
+    start_datetime = '{0} {1}'.format(trade_date, start_timestamp)
     end_timestamp = options.get('end_timestamp') or '22:50:00'
+    end_datetime = '{0} {1}'.format(trade_date, end_timestamp)
     delay_sec = int(options.get('delay_sec')) or 5
     total_return = 0.0
     close_price = 0.0  # not the true close price, to close the position
-    # transaction_lst = []
     _text_lst = ['00', '01', '10', '11']
     update_factor_time = 0.0
     get_signal_time = 0.0
-    # TODO remove hardcode
-    if len(values) < define.TICK_SIZE * 0.3:
-        print("-----------------------miss mkt for trade_date:", trade_date, len(values))
+
+    # robust handling, skip dates with records missing more than threshold(e.g. 0.3 here)
+    if len(values) < define.TICK_SIZE * define.MKT_MISSING_SKIP:
+        logging.warning("miss mkt for trade_date:{0} with len:{1} and tick size:{2}".format(trade_date, len(values),
+                                                                                            define.TICK_SIZE
+                                                                                            ))
         return
+    _size = len(values)
+    print('size is:', _size)
     for idx, item in enumerate(values):
-        _last = item[4]
-        _update_time = item[1]
-        # if _update_time < start_timestamp:
-        #     continue
+        _last = item[3]
+        _update_time = item[2]
+
         start_ts = time.time()
-        factor.update_factor(item, idx=idx)
+        factor.update_factor(item, idx=idx, multiplier=_mul_num)
         end_ts = time.time()
-        # print("update factor time:", end_ts-start_ts)
         update_factor_time += (end_ts - start_ts)
-        #
-        # if _update_time > end_timestamp or _update_time < start_timestamp:
-        #     continue
+        # print("update factor time:{0}".format(update_factor_time))
+
         if not utils.is_trade(start_timestamp, end_timestamp, _update_time):
+            # print(_update_time, 'not trade time--------------')
             continue
+
         close_price = _last
         close_timestamp = _update_time
         start_ts = time.time()
-        _signal = signal.get_signal(volitility=volitility, k1=k1, k2=k2, instrument_id=instrument_id,
-                                    stop_profit=stop_profit, fee=fee, start_tick=start_tick,
-                                    long_lots_limit=long_lots_limit, short_lots_limit=short_lots_limit,
-                                    slope_upper=slope_upper,
-                                    slope_lower=slope_lower, stop_loss=stop_loss,
-                                    multiplier=define.dict_multiplier.get(product_id))
+
+        options.update({'instrument_id': instrument_id})
+        options.update({'multiplier': _mul_num})
+        options.update({'fee': fee})
+        options.update({'tick': item})
+        # get signal
+        s1 = time.time()
+        _signal = signal.get_signal(params=options)
+        e1 = time.time()
+        # print('get signal time is:', e1-s1)
+        # print(idx, _update_time, _signal)
+        # print("Signal is:{0}".format(_signal))
         end_ts = time.time()
         get_signal_time += (end_ts - start_ts)
-        # _signal = on_tick(factor, position, item, args, kwargs)
         _pos = position.get_position(instrument_id)
-        _last_trans_time = _pos[-1][2] if _pos else start_timestamp
-        _trans_gap_time = datetime.strptime(_update_time, '%H:%M:%S') - datetime.strptime(_last_trans_time, '%H:%M:%S')
-        if _trans_gap_time.seconds < delay_sec:
+        _last_trans_time = _pos[-1][2] if _pos else start_datetime
+        dt_curr_time = datetime.strptime(_update_time.split('.')[0], '%Y-%m-%d %H:%M:%S')
+        try:
+            dt_last_trans_time = datetime.strptime(_last_trans_time, '%H:%M:%S')
+        except Exception as ex:
+            dt_last_trans_time = datetime.strptime(_last_trans_time.split('.')[0], '%Y-%m-%d %H:%M:%S')
+        else:
+            pass
+        # _trans_gap_time = (dt_curr_time.hour * 3600 + dt_curr_time.minute * 60 + dt_curr_time.second) - (
+        #         dt_last_trans_time.hour * 3600 + dt_last_trans_time.minute * 60 + dt_last_trans_time.second)
+        _trans_gap_time = (dt_curr_time - dt_last_trans_time).seconds
+        # order gap, to be robust
+        if _trans_gap_time < delay_sec:
+            # print('skip here--------------------------', _trans_gap_time, delay_sec, _update_time)
             continue
+        s2 = time.time()
+        # handle signal, update account and position
         if _signal == define.LONG_OPEN:
-            holding_time = datetime.strptime(_update_time, '%H:%M:%S') - datetime.strptime(_update_time, '%H:%M:%S')
-
             position.open_position(instrument_id, define.LONG, _last, _update_time)
             account.add_transaction(
                 [idx, instrument_id, _text_lst[define.LONG_OPEN], _last, _last, open_fee, _update_time, _update_time,
-                 holding_time.seconds, 0.0])
+                 0.0, 0.0])
             account.update_fee(open_fee)
 
         elif _signal == define.SHORT_OPEN:
-
-            holding_time = datetime.strptime(_update_time, '%H:%M:%S') - datetime.strptime(_update_time, '%H:%M:%S')
             position.open_position(instrument_id, define.SHORT, _last, _update_time)
             account.add_transaction(
                 [idx, instrument_id, _text_lst[define.SHORT_OPEN], _last, _last, open_fee, _update_time, _update_time,
-                 holding_time.seconds, 0.0])
+                 0.0, 0.0])
             account.update_fee(open_fee)
 
         elif _signal == define.LONG_CLOSE:
             _pos = position.get_position_side(instrument_id, define.LONG)
             if _pos:
-                holding_time = datetime.strptime(_update_time, '%H:%M:%S') - datetime.strptime(_pos[2], '%H:%M:%S')
-
+                dt_curr_time = datetime.strptime(_update_time.split('.')[0], '%Y-%m-%d %H:%M:%S')
+                try:
+                    dt_last_trans_time = datetime.strptime(_pos[2], '%H:%M:%S')
+                except Exception as ex:
+                    dt_last_trans_time = datetime.strptime(_pos[2].split('.')[0], '%Y-%m-%d %H:%M:%S')
+                else:
+                    pass
+                holding_time = (dt_curr_time.hour * 3600 + dt_curr_time.minute * 60 + dt_curr_time.second) - (
+                        dt_last_trans_time.hour * 3600 + dt_last_trans_time.minute * 60 + dt_last_trans_time.second)
                 position.close_position(instrument_id, define.LONG, _last, _update_time)
-                total_return += (_last - _pos[1]) * define.dict_multiplier.get(product_id) - fee
+                total_return += (_last - _pos[1]) * _mul_num - fee
 
                 account.add_transaction(
                     [idx, instrument_id, _text_lst[define.LONG_CLOSE], _last, _pos[1], close_t0_fee, _pos[2],
                      _update_time,
-                     holding_time.seconds,
-                     (_last - _pos[1]) * define.dict_multiplier.get(product_id) - fee])
+                     holding_time,
+                     (_last - _pos[1]) * _mul_num - fee])
                 account.update_fee(close_t0_fee)
         elif _signal == define.SHORT_CLOSE:
             _pos = position.get_position_side(instrument_id, define.SHORT)
             if _pos:
-                holding_time = datetime.strptime(_update_time, '%H:%M:%S') - datetime.strptime(_pos[2], '%H:%M:%S')
+                dt_curr_time = datetime.strptime(_update_time.split('.')[0], '%Y-%m-%d %H:%M:%S')
+                try:
+                    dt_last_trans_time = datetime.strptime(_pos[2], '%H:%M:%S')
+                except Exception as ex:
+                    dt_last_trans_time = datetime.strptime(_pos[2].split('.')[0], '%Y-%m-%d %H:%M:%S')
+                else:
+                    pass
+                # holding_time = (dt_curr_time.hour * 3600 + dt_curr_time.minute * 60 + dt_curr_time.second) - (
+                #         dt_last_trans_time.hour * 3600 + dt_last_trans_time.minute * 60 + dt_last_trans_time.second)
+                holding_time = (dt_curr_time - dt_last_trans_time).seconds
                 position.close_position(instrument_id, define.SHORT, _last, _update_time)
-                total_return += (_pos[1] - _last) * define.dict_multiplier.get(product_id) - fee
+                total_return += (_pos[1] - _last) * _mul_num - fee
 
                 account.add_transaction(
                     [idx, instrument_id, _text_lst[define.SHORT_CLOSE], _last, _pos[1], close_t0_fee, _pos[2],
                      _update_time,
-                     holding_time.seconds,
-                     (_pos[1] - _last) * define.dict_multiplier.get(product_id) - fee])
+                     holding_time,
+                     (_pos[1] - _last) * _mul_num - fee])
                 account.update_fee(close_t0_fee)
         else:  # NO_SIGNAL
             pass
-            # _pos = position.get_position(instrument_id)
-            # if _pos:
-            #     for item in _pos:
-            #         if item[0] == LONG:
-            #             if _last    _last_price = item[1]
-
+        e2 = time.time()
+        # print('handle signal time:', idx, idx/_size, e2-s2)
     _pos = position.get_position(instrument_id)
     total_return_risk = total_return
     total_risk = 0.0
+    print("complete tick fedding....")
     if _pos:
         _tmp_pos = deepcopy(_pos)
         for item in _tmp_pos:
             if item[0] == define.LONG:
-                holding_time = datetime.strptime(close_timestamp, '%H:%M:%S') - datetime.strptime(item[2], '%H:%M:%S')
-                _return = (close_price - item[1]) * define.dict_multiplier.get(product_id) - fee
-                # TODO position control
-                # if _return < stop_loss:
-                #     continue
+                dt_curr_time = datetime.strptime(close_timestamp.split('.')[0], '%Y-%m-%d %H:%M:%S')
+                try:
+                    dt_last_trans_time = datetime.strptime(item[2], '%H:%M:%S')
+                except Exception as ex:
+                    dt_last_trans_time = datetime.strptime(item[2].split('.')[0], '%Y-%m-%d %H:%M:%S')
+                else:
+                    pass
+                # holding_time = (dt_curr_time.hour * 3600 + dt_curr_time.minute * 60 + dt_curr_time.second) - (
+                #         dt_last_trans_time.hour * 3600 + dt_last_trans_time.minute * 60 + dt_last_trans_time.second)
+                holding_time = (dt_curr_time - dt_last_trans_time).seconds
+                # holding_time = datetime.strptime(close_timestamp, '%H:%M:%S') - datetime.strptime(item[2], '%H:%M:%S')
+
+                _return = (close_price - item[1]) * _mul_num - fee
+
                 total_return += _return
                 total_risk += item[1]
                 print('final long close with return:{0},total return after:{1}'.format(_return, total_return))
 
                 account.add_transaction(
                     [idx, instrument_id, _text_lst[define.LONG_CLOSE], close_price, item[1], close_t0_fee, item[2],
-                     close_timestamp, holding_time.seconds, _return])
+                     close_timestamp, holding_time, _return])
                 account.update_fee(close_t0_fee)
                 position.close_position(instrument_id=instrument_id, long_short=define.LONG, price=close_price,
                                         timestamp=close_timestamp)
             else:
-                holding_time = datetime.strptime(close_timestamp, '%H:%M:%S') - datetime.strptime(item[2], '%H:%M:%S')
-                _return = ((item[1] - close_price) * define.dict_multiplier.get(product_id) - fee)
+
+                dt_curr_time = datetime.strptime(close_timestamp.split('.')[0], '%Y-%m-%d %H:%M:%S')
+                try:
+                    dt_last_trans_time = datetime.strptime(item[2], '%H:%M:%S')
+                except Exception as ex:
+                    dt_last_trans_time = datetime.strptime(item[2].split('.')[0], '%Y-%m-%d %H:%M:%S')
+                else:
+                    pass
+                holding_time = (dt_curr_time - dt_last_trans_time).seconds
+                # holding_time = (dt_curr_time.hour * 3600 + dt_curr_time.minute * 60 + dt_curr_time.second) - (
+                #         dt_last_trans_time.hour * 3600 + dt_last_trans_time.minute * 60 + dt_last_trans_time.second)
+                # holding_time = datetime.strptime(close_timestamp, '%H:%M:%S') - datetime.strptime(item[2], '%H:%M:%S')
+                _return = ((item[1] - close_price) * _mul_num - fee)
                 # TODO position control
                 # if _return < stop_loss:
                 #     continue
@@ -234,16 +254,17 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31', o
 
                 account.add_transaction(
                     [idx, instrument_id, _text_lst[define.SHORT_CLOSE], close_price, item[1], close_t0_fee, item[2],
-                     close_timestamp, holding_time.seconds, _return])
+                     close_timestamp, holding_time, _return])
                 account.update_fee(close_t0_fee)
                 position.close_position(instrument_id=instrument_id, long_short=define.SHORT, price=close_price,
                                         timestamp=close_timestamp)
 
-    # _pos = position.get_position(instrument_id)
-    # if _pos:
-    #     for item in _pos:
-    #         total_risk += item[1]
-    factor.cache_factor()
+    if options.get('cache_factor') == '1':
+        logging.info('Start cache factor')
+        factor.cache_factor()
+        logging.info('Complete cache factor')
+    else:
+        logging.info('Stip cache factor')
     _idx_lst = list(range(len(factor.last_price)))
     fig = plt.figure()
     ax1 = fig.add_subplot(111)
@@ -334,7 +355,7 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31', o
             long_open + short_open) if long_open + short_open > 0 else 0.0
     # f = open("results/results_{0}.txt".format(product_id), "a")
     # _key = '{0}_{1}'.format(trade_date, instrument_id)
-    result_fname_digest = hashlib.sha256(bytes(backtesting_config, encoding='utf-8')).hexdigest()
+    # result_fname_digest = hashlib.sha256(bytes(backtesting_config, encoding='utf-8')).hexdigest()
     # f.write("{0}:{1}\n".format(backtesting_config, result_fname_digest))
     _ret_path = utils.get_path([define.RESULT_DIR, define.BT_DIR, '{0}.csv'.format(result_fname_digest)])
     try:
@@ -360,22 +381,5 @@ def backtesting(product_id='m', trade_date='20210401', prev_date='2021-03-31', o
          }, ignore_index=True)
 
     result_df.to_csv(_ret_path, index=False)
-    # f.write(
-    #     "${0}\ntotal_return:{1},total_fee:{2},precision:{3},correct_long_open:{4},wrong_long_open:{5},correct_short_open:{6},"
-    #     "wrong_short_open:{7},short_open:{8},long_open:{9},total_risk:{10}\n".format(
-    #         backtesting_config, round(total_return, 2), round(account.fee, 2), round(precision, 2), correct_long_open,
-    #         wrong_long_open,
-    #         correct_short_open,
-    #         wrong_short_open, short_open, long_open, total_risk))
     ret = (total_return, account.fee, precision)
     return ret
-
-
-if __name__ == '__main__':
-    # dates = get_trade_dates()
-    dates = ['20210104', '20210105']
-    for idx, d in enumerate(dates):
-        if idx < 1:
-            continue
-        df = get_tick_mkt(trade_date=d, prev_date=dates[idx - 1], instrument_id='m2101', product_id='m')
-    print(df.shape)

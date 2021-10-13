@@ -72,9 +72,7 @@ def plot_factor(x=[], y=[], labels=[], tick_step=120):
 def get_factor(trade_date="20210701", predict_windows=1200, lag_long=600,
                lag_short=10,
                stop_profit=0.005, stop_loss=0.01, instrument_id='', exchange_cd=''):
-    exchange_lst = ['dc', 'ine', 'sc', 'zc']
-    _exchange_path = {'XZCE': 'zc', 'XSGE': 'sc', 'XSIE': 'ine', 'XDCE': 'dc'}.get(exchange_cd)
-    _tick_mkt_path = os.path.join(define.TICK_MKT_DIR, _exchange_path,
+    _tick_mkt_path = os.path.join(define.TICK_MKT_DIR, define.exchange_map.get(exchange_cd),
                                   '{0}_{1}.csv'.format(instrument_id, trade_date.replace('-', '')))
 
     tick_mkt = pd.read_csv(_tick_mkt_path, encoding='gbk')

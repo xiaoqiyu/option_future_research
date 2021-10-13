@@ -9,6 +9,7 @@
 import os
 import re
 
+
 NO_SIGNAL = -1
 LONG_OPEN = 0
 LONG_CLOSE = 1
@@ -49,7 +50,7 @@ skip_raw_cols = ['Exchange', 'InstrumentID', 'LastPrice', 'OpenInterest', 'Inter
 #                  'bs_vol_short', 'bs_vol_diff',
 #                  'bs_tag','log_return_short','dea','dif','trend_short','bs2vol_ratio_short']
 
-dict_multiplier = {'m': 10, 'i': 100, 'TA': 1, 'ru': 10, }
+# dict_multiplier = {'m': 10, 'i': 100, 'TA': 1, 'ru': 10, }
 BASE_DIR = 'option_future_research'
 RESULT_DIR = 'results'
 CONF_DIR = 'conf'
@@ -61,6 +62,12 @@ FACTOR_DIR = 'factors'
 CACHE_DIR = 'cache'
 BT_DIR = 't0backtest'
 daily_cache_name = 'cache/future_20210101_20210804.csv'
+
+MKT_MISSING_SKIP = 0.3
+
+exchange_map = {'XZCE': 'zc', 'XSGE': 'sc', 'XSIE': 'ine', 'XDCE': 'dc'}
+
+
 
 #
 # def get_trade_dates():

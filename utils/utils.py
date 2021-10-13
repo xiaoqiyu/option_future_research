@@ -28,7 +28,7 @@ import os
 import gc
 
 try:
-    print("current path in utils:", os.getcwd() )
+    print("current path in utils:", os.getcwd())
     # _conf_file = os.path.join(os.path.abspath(os.pardir), define.CONF_DIR,
     #                           define.CONF_FILE_NAME)
     _conf_file = os.path.join(os.path.abspath(os.getcwd()), define.CONF_DIR, define.CONF_FILE_NAME)
@@ -76,6 +76,7 @@ def test_time():
 
 
 def is_trade(start_timestamp=None, end_timestamp=None, update_time=None):
+    update_time = update_time.split()[1].split('.')[0]
     if update_time > start_timestamp and update_time < '22:59:30':
         return True
     elif update_time > '09:00:30' and update_time < end_timestamp:
@@ -87,10 +88,22 @@ def is_trade(start_timestamp=None, end_timestamp=None, update_time=None):
 
 def get_path(ref_path_lst=[]):
     _path = os.path.join(os.path.abspath(os.getcwd()))
-    print(_path)
+    # print(_path)
     for p in ref_path_lst:
         _path = os.path.join(_path, p)
     return _path
+
+
+def get_contract(instrument_id=''):
+    df = DataAPI.FutuGet(secID=u"", ticker=instrument_id, exchangeCD=u"", contractStatus="", contractObject=u"",
+                         prodID="",
+                         field=u"", pandas="1")
+    return df
+
+
+def get_mul_num(instrument_id=''):
+    df = get_contract(instrument_id=instrument_id)
+    return df['contMultNum'].values[0]
 
 
 if __name__ == "__main__":
@@ -98,5 +111,7 @@ if __name__ == "__main__":
     test_time()
     end_ts = time.time()
     print(end_ts - start_ts)
-    df = get_instrument_ids(start_date='20210901', end_date='20210930', product_id='RB')
+    # df = get_instrument_ids(start_date='20210901', end_date='20210930', product_id='RB')
+    # print(df)
+    df = get_contract(instrument_id='rb2201', exchangeCD=u"XSGE")
     print(df)
