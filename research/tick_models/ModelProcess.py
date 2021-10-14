@@ -297,7 +297,7 @@ def train_model_reg(predict_windows=120,
     _model_evaluate.update({'{0}_{1}'.format(instrument_id, test_dates[1].replace('-', '')): _ret_lst})
     utils.write_json_file(_evalute_path, _model_evaluate)
 
-    df_pred = pd.DataFrame({'UpdateTime': df_factor['UpdateTime'], 'pred': y_pred})
+    df_pred = pd.DataFrame({'UpdateTime': df_factor['UpdateTime'], 'pred': y_pred, 'label': df_factor['label_cumsum']})
     _file_name = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR, define.TICK_MODEL_DIR,
                               'pred_{0}_{1}_{2}_{3}.csv'.format(instrument_id, test_dates[1].replace('-', ''),
                                                                 predict_windows, lag_windows))
@@ -520,19 +520,12 @@ def train_model_ols(predict_windows=120,
     #       metrics.r2_score(df_factor['label_cumsum'], y_pred))
 
 
-def get_trade_dates(start_date='20110920', end_date='20210921'):
-    df = DataAPI.TradeCalGet(exchangeCD=u"XSHG,XSHE", beginDate=start_date, endDate=end_date, isOpen=u"1", field=u"",
-                             pandas="1")
-    df = df[df.isOpen == 1]
-    return df
-
-
 if __name__ == '__main__':
     # factor_process(windows_len=600, stop_profit=5.0, trade_date='20210106')
     # get_factor()
     start_date = '20210701'
     end_date = '20210730'
-    trade_date_df = get_trade_dates(start_date=start_date, end_date=end_date)
+    trade_date_df = utils.get_trade_dates(start_date=start_date, end_date=end_date)
     trade_date_df = trade_date_df[trade_date_df.exchangeCD == 'XSHE']
     trade_dates = list(trade_date_df['calendarDate'])
     train_days = 3

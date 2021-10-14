@@ -42,7 +42,7 @@ def train_models(start_date='20210701', end_date='20210730', product_id='rb'):
 
 
 def backtest(start_date='20210707', end_date='20210709', product_id='rb'):
-    trade_date_df = get_trade_dates(start_date=start_date, end_date=end_date)
+    trade_date_df = utils.get_trade_dates(start_date=start_date, end_date=end_date)
     trade_date_df = trade_date_df[trade_date_df.exchangeCD == 'XSHE']
     trade_dates = list(trade_date_df['calendarDate'])
 
@@ -79,4 +79,4 @@ def backtest(start_date='20210707', end_date='20210709', product_id='rb'):
 
 if __name__ == "__main__":
     # train_models(start_date='20210701', end_date='20210730', product_id='rb')
-    backtest(start_date='20210706', end_date='20210729', product_id='rb')
+    backtest(start_date='20210707', end_date='20210729', product_id='rb')

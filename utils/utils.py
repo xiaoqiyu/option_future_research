@@ -119,6 +119,11 @@ def load_json_file(filepath=''):
         contents = infile.read()
         return json.loads(contents)
 
+def get_trade_dates(start_date='20110920', end_date='20210921'):
+    df = DataAPI.TradeCalGet(exchangeCD=u"XSHG,XSHE", beginDate=start_date, endDate=end_date, isOpen=u"1", field=u"",
+                             pandas="1")
+    df = df[df.isOpen == 1]
+    return df
 
 if __name__ == "__main__":
     start_ts = time.time()

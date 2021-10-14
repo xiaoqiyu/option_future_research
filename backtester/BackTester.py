@@ -23,7 +23,8 @@ import utils.define as define
 from copy import deepcopy
 
 
-def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', result_fname_digest='', options={}):
+def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', result_fname_digest='', options={},
+                plot_mkt=False):
     # load back test config
     backtesting_config = ''
     if not options:
@@ -164,8 +165,9 @@ def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', 
                     dt_last_trans_time = datetime.strptime(_pos[2].split('.')[0], '%Y-%m-%d %H:%M:%S')
                 else:
                     pass
-                holding_time = (dt_curr_time.hour * 3600 + dt_curr_time.minute * 60 + dt_curr_time.second) - (
-                        dt_last_trans_time.hour * 3600 + dt_last_trans_time.minute * 60 + dt_last_trans_time.second)
+                # holding_time = (dt_curr_time.hour * 3600 + dt_curr_time.minute * 60 + dt_curr_time.second) - (
+                #         dt_last_trans_time.hour * 3600 + dt_last_trans_time.minute * 60 + dt_last_trans_time.second)
+                holding_time = (dt_curr_time - dt_last_trans_time).seconds
                 position.close_position(instrument_id, define.LONG, _last, _update_time)
                 total_return += (_last - _pos[1]) * _mul_num - fee
 
@@ -185,8 +187,6 @@ def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', 
                     dt_last_trans_time = datetime.strptime(_pos[2].split('.')[0], '%Y-%m-%d %H:%M:%S')
                 else:
                     pass
-                # holding_time = (dt_curr_time.hour * 3600 + dt_curr_time.minute * 60 + dt_curr_time.second) - (
-                #         dt_last_trans_time.hour * 3600 + dt_last_trans_time.minute * 60 + dt_last_trans_time.second)
                 holding_time = (dt_curr_time - dt_last_trans_time).seconds
                 position.close_position(instrument_id, define.SHORT, _last, _update_time)
                 total_return += (_pos[1] - _last) * _mul_num - fee
@@ -216,11 +216,7 @@ def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', 
                     dt_last_trans_time = datetime.strptime(item[2].split('.')[0], '%Y-%m-%d %H:%M:%S')
                 else:
                     pass
-                # holding_time = (dt_curr_time.hour * 3600 + dt_curr_time.minute * 60 + dt_curr_time.second) - (
-                #         dt_last_trans_time.hour * 3600 + dt_last_trans_time.minute * 60 + dt_last_trans_time.second)
                 holding_time = (dt_curr_time - dt_last_trans_time).seconds
-                # holding_time = datetime.strptime(close_timestamp, '%H:%M:%S') - datetime.strptime(item[2], '%H:%M:%S')
-
                 _return = (close_price - item[1]) * _mul_num - fee
 
                 total_return += _return
@@ -245,13 +241,7 @@ def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', 
                 else:
                     pass
                 holding_time = (dt_curr_time - dt_last_trans_time).seconds
-                # holding_time = (dt_curr_time.hour * 3600 + dt_curr_time.minute * 60 + dt_curr_time.second) - (
-                #         dt_last_trans_time.hour * 3600 + dt_last_trans_time.minute * 60 + dt_last_trans_time.second)
-                # holding_time = datetime.strptime(close_timestamp, '%H:%M:%S') - datetime.strptime(item[2], '%H:%M:%S')
                 _return = ((item[1] - close_price) * _mul_num - fee)
-                # TODO position control
-                # if _return < stop_loss:
-                #     continue
                 total_risk += item[1]
                 total_return += _return
                 print('final short close with return:{0},total return after:{1}'.format(_return, total_return))
@@ -269,46 +259,31 @@ def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', 
         logging.info('Complete cache factor')
     else:
         logging.info('Stip cache factor')
-    _idx_lst = list(range(len(factor.last_price)))
-    fig = plt.figure()
-    ax1 = fig.add_subplot(111)
-    ax1.plot(_idx_lst[define.PLT_START:define.PLT_END], factor.last_price[define.PLT_START:define.PLT_END])
-    ax1.plot(_idx_lst[define.PLT_START:define.PLT_END], factor.vwap[define.PLT_START:define.PLT_END])
-    ax1.plot(_idx_lst[define.PLT_START:define.PLT_END], factor.turning[define.PLT_START:define.PLT_END])
-    # ax1.plot(_idx_lst[:-10], factor.upper_bound[:-10], 'r')
-    # ax1.plot(_idx_lst[:-10], factor.lower_bound[:-10], 'g')
-    ts_idx = 0
-    for idx, item in enumerate(factor.update_time):
-        if item >= '09:00:00' and item <= '15:00:00':
-            ts_idx = idx
-            break
-    # ts_idx = _ts_lst.index('21:00:00')
-    print(np.array(factor.last_price).std())
-    ax1.axvline(ts_idx)
-    # ax.plot(_idx_lst, _vwap_spread_lst)
-    # for item in trans_lst:
-    #     plt.text(item[0], item[1], s='({0},{1})'.format(item[3], item[4]))
-    ax1.grid(True)
-    ax1.set_title('{0}_{1}'.format(instrument_id, trade_date))
-    # x_idx = range(0, len(_idx_lst), 600)
-    xtick_labels = [item[:-3] for item in factor.update_time]
-    # for _idx in x_idx:
-    #     xtick_labels.append(factor.update_time[_idx])
-    ax1.set_xticks(_idx_lst[::3600])
-    min_lst = []
-    ax1.set_xticklabels(xtick_labels[::3600])
-    # ax1.set_xticks(factor.update_time[::3600])
-    # ax1.set_xticks(x_idx, xtick_labels, rotation=60, FontSize=6)
-    for item in account.transaction:
-        _t_lst = ['lo', 'lc', 'so', 'sc']
-        ax1.text(item[0], item[3], s='{0}'.format(item[2]))
+    if plot_mkt:
+        _idx_lst = list(range(len(factor.last_price)))
+        fig = plt.figure()
+        ax1 = fig.add_subplot(111)
+        ax1.plot(_idx_lst[define.PLT_START:define.PLT_END], factor.last_price[define.PLT_START:define.PLT_END])
+        ax1.plot(_idx_lst[define.PLT_START:define.PLT_END], factor.vwap[define.PLT_START:define.PLT_END])
+        ax1.plot(_idx_lst[define.PLT_START:define.PLT_END], factor.turning[define.PLT_START:define.PLT_END])
+        print(np.array(factor.last_price).std())
+        ax1.grid(True)
+        ax1.set_title('{0}_{1}'.format(instrument_id, trade_date))
+        xtick_labels = [item[:-3] for item in factor.update_time]
+        ax1.set_xticks(_idx_lst[::3600])
+        min_lst = []
+        ax1.set_xticklabels(xtick_labels[::3600])
+        # ax1.set_xticks(factor.update_time[::3600])
+        # ax1.set_xticks(x_idx, xtick_labels, rotation=60, FontSize=6)
+        for item in account.transaction:
+            _t_lst = ['lo', 'lc', 'so', 'sc']
+            ax1.text(item[0], item[3], s='{0}'.format(item[2]))
 
-    ax2 = ax1.twinx()
-    # ax2.plot(_idx_lst[PLT_START:PLT_END], factor.slope[PLT_START:PLT_END], 'r')
+        ax2 = ax1.twinx()
+        # ax2.plot(_idx_lst[PLT_START:PLT_END], factor.slope[PLT_START:PLT_END], 'r')
 
-    _ret_path = utils.get_path([define.RESULT_DIR, define.BT_DIR, '{0}_{1}.jpg'.format(instrument_id, trade_date)])
-    plt.savefig(_ret_path)
-    # plt.show()
+        _ret_path = utils.get_path([define.RESULT_DIR, define.BT_DIR, '{0}_{1}.jpg'.format(instrument_id, trade_date)])
+        plt.savefig(_ret_path)
     trans_df = pd.DataFrame(account.transaction,
                             columns=['idx', 'instrument_id', 'direction', 'price', 'open_price', 'fee', 'open_ts',
                                      'close_ts', 'holding_time',
