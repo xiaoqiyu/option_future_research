@@ -18,6 +18,7 @@ import os
 class RegSignal(Signal):
     def __init__(self, factor, position, instrument_id=None, trade_date=None):
         super().__init__(factor, position)
+        self.is_available = True
         trade_date_df = utils.get_trade_dates(start_date='20210101', end_date=trade_date)
         trade_date_df = trade_date_df[trade_date_df.exchangeCD == 'XSHE']
         trade_dates = list(trade_date_df['calendarDate'])
@@ -26,6 +27,9 @@ class RegSignal(Signal):
                                         'model_evaluate.json'])
         _model_evaluate = utils.load_json_file(_evalute_path)
         _ret_lst = _model_evaluate.get('{0}_{1}'.format(instrument_id, trade_date.replace('-', ''))) or []
+        if not _ret_lst:
+            self.is_available = False
+            return
         _ret_lst.sort(key=lambda x: x[1], reverse=True)
         mse, r2, date, predict_window, lag_window = _ret_lst[0]
         _path = utils.get_path(
@@ -41,12 +45,18 @@ class RegSignal(Signal):
         _label_lst = sorted(list(self.df_prev['pred']))
         # self._ret_up = self.df_prev['label'].quantile(1 - 0.0001)
         # self._ret_down = self.df_prev['label'].quantile(0.002)
+        #TODO CHECK HARDCODE
         self._ret_up = _label_lst[-50]
         self._ret_down = _label_lst[20]
+        self._ret_up = 0.0005
+        self._ret_down = -0.0005
         print('up ret:{0}, down ret:{1},up pred:{2}, down pred:{3}'.format(self._ret_up, _pred_lst[-50], self._ret_down,
                                                                            _pred_lst[50]))
 
     def get_signal(self, params={}):
+        if not self.is_available:
+            return define.NO_SIGNAL
+
         _k = params.get('tick')[2].split()[1].split('.')[0]
         _v = self.map_dict.get(_k) or 0.0
         _up_ratio = float(params.get('ret_up_ratio')) or 0.0015
@@ -74,7 +84,7 @@ class RegSignal(Signal):
                 elif item[0] == define.SHORT:
                     short_price = item[1]
                     _short += 1
-        if _v >= self._ret_up and _long < long_lots_limit:
+        if _v >= self._ret_up and _long < long_lots_limit and _v > 0:
             return define.LONG_OPEN
         elif _v <= self._ret_down and _short < short_lots_limit and _v < 0:
             return define.SHORT_OPEN

@@ -6,10 +6,6 @@
 # @File    : define.py
 
 
-import os
-import re
-
-
 NO_SIGNAL = -1
 LONG_OPEN = 0
 LONG_CLOSE = 1
@@ -20,6 +16,7 @@ SHORT = 5
 PLT_START = 3
 PLT_END = -10
 TICK_SIZE = 41400
+TICK = 1
 
 cols = ["InstrumentID", "LastPrice", "OpenPrice", "HighestPrice", "LowestPrice", "Volume", "Turnover", "OpenInterest",
         "UpperLimitPrice", "LowerLimitPrice", "UpdateTime",
@@ -41,16 +38,10 @@ skip_raw_cols = ['Exchange', 'InstrumentID', 'LastPrice', 'OpenInterest', 'Inter
                  'Turnover', 'Volume', 'OpenVolume', 'CloseVolume', 'TransactionType', 'Direction',
                  'BidPrice1', 'AskPrice1', 'BidVolume1', 'AskVolume1', 'vwap', 'vol_short', 'vol_long',
                  'turnover_short', 'turnover_long', 'vwap_short', 'vwap_long', 'bs_vol', 'bs_vol_long',
-                 'bs_vol_short', 'bs_vol_diff', 'bs_tag']
+                 'bs_vol_short', 'bs_vol_diff', 'bs_tag',
+                 'trenddiff', 'trend_long', 'dif', 'dea', 'turnover_ls_ratio', 'vwap_ls_ratio', 'aoi', 'oi']
+                 # remove from VIF, to be added with other calculation
 
-# skip_raw_cols = ['Exchange', 'InstrumentID', 'LastPrice', 'OpenInterest', 'InterestDiff',
-#                  'Turnover', 'Volume', 'OpenVolume', 'CloseVolume', 'TransactionType', 'Direction',
-#                  'BidPrice1', 'AskPrice1', 'BidVolume1', 'AskVolume1', 'vwap', 'vol_short', 'vol_long',
-#                  'turnover_short', 'turnover_long', 'vwap_short', 'vwap_long', 'bs_vol', 'bs_vol_long',
-#                  'bs_vol_short', 'bs_vol_diff',
-#                  'bs_tag','log_return_short','dea','dif','trend_short','bs2vol_ratio_short']
-
-# dict_multiplier = {'m': 10, 'i': 100, 'TA': 1, 'ru': 10, }
 BASE_DIR = 'option_future_research'
 RESULT_DIR = 'results'
 CONF_DIR = 'conf'
@@ -66,18 +57,3 @@ daily_cache_name = 'cache/future_20210101_20210804.csv'
 MKT_MISSING_SKIP = 0.3
 
 exchange_map = {'XZCE': 'zc', 'XSGE': 'sc', 'XSIE': 'ine', 'XDCE': 'dc'}
-
-
-
-#
-# def get_trade_dates():
-#     with open('../cache/dates.txt', 'rb') as f:
-#         dates = f.readlines()
-#         lst = os.listdir('C:\projects\pycharm\option_future_research\cache')
-#         dates = []
-#         for d in lst:
-#             _s, _e = re.match(r'\d*', d).span()
-#             if _s != _e:
-#                 dates.append(d)
-#
-#     return sorted(dates)

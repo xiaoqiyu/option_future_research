@@ -23,6 +23,23 @@ import utils.define as define
 from copy import deepcopy
 
 
+def get_fill_ret(order=[], tick=1, mkt=[]):
+    _order_type, _price, _lot = order
+    bid_price1, ask_price1, bid_vol1, ask_vol1 = mkt[-4:]
+    _last_price = mkt[3]
+    if _order_type == define.LONG:
+        if _lot <= ask_vol1 and (not _price or _price >= ask_price1):
+            return [ask_price1, _lot]
+        else:
+            return [0, 0]
+    if _order_type == define.SHORT:
+        if _lot <= bid_vol1 and (not _price or _price <= bid_price1):
+            return [bid_price1, _lot]
+        else:
+            return [0, 0]
+    return [0, 0]
+
+
 def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', result_fname_digest='', options={},
                 plot_mkt=False):
     # load back test config
@@ -63,6 +80,9 @@ def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', 
                                          trade_date=trade_date)}
     # signal = TOSignal(factor, position)
     signal = signal_map.get(signal_name)
+    print('is trade available------------------------', signal.is_available)
+    if not signal.is_available:
+        return
 
     # process backtest parameter
     stop_profit = float(options.get('stop_profit')) or 5.0
@@ -142,18 +162,26 @@ def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', 
         s2 = time.time()
         # handle signal, update account and position
         if _signal == define.LONG_OPEN:
-            position.open_position(instrument_id, define.LONG, _last, _update_time)
-            account.add_transaction(
-                [idx, instrument_id, _text_lst[define.LONG_OPEN], _last, _last, open_fee, _update_time, _update_time,
-                 0.0, 0.0])
-            account.update_fee(open_fee)
+            _fill_price, _fill_lot = get_fill_ret(order=[define.LONG, None, 1], tick=1, mkt=item)
+            if _fill_lot > 0:
+                position.open_position(instrument_id, define.LONG, _fill_price, _update_time)
+                account.add_transaction(
+                    [idx, instrument_id, _text_lst[define.LONG_OPEN], _last, _fill_price, _fill_price, open_fee,
+                     _update_time,
+                     _update_time,
+                     0.0, 0.0])
+                account.update_fee(open_fee)
 
         elif _signal == define.SHORT_OPEN:
-            position.open_position(instrument_id, define.SHORT, _last, _update_time)
-            account.add_transaction(
-                [idx, instrument_id, _text_lst[define.SHORT_OPEN], _last, _last, open_fee, _update_time, _update_time,
-                 0.0, 0.0])
-            account.update_fee(open_fee)
+            _fill_price, _fill_lot = get_fill_ret(order=[define.SHORT, None, 1], tick=1, mkt=item)
+            if _fill_lot > 0:
+                position.open_position(instrument_id, define.SHORT, _fill_price, _update_time)
+                account.add_transaction(
+                    [idx, instrument_id, _text_lst[define.SHORT_OPEN], _last, _fill_price, _fill_price, open_fee,
+                     _update_time,
+                     _update_time,
+                     0.0, 0.0])
+                account.update_fee(open_fee)
 
         elif _signal == define.LONG_CLOSE:
             _pos = position.get_position_side(instrument_id, define.LONG)
@@ -165,18 +193,20 @@ def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', 
                     dt_last_trans_time = datetime.strptime(_pos[2].split('.')[0], '%Y-%m-%d %H:%M:%S')
                 else:
                     pass
-                # holding_time = (dt_curr_time.hour * 3600 + dt_curr_time.minute * 60 + dt_curr_time.second) - (
-                #         dt_last_trans_time.hour * 3600 + dt_last_trans_time.minute * 60 + dt_last_trans_time.second)
                 holding_time = (dt_curr_time - dt_last_trans_time).seconds
-                position.close_position(instrument_id, define.LONG, _last, _update_time)
-                total_return += (_last - _pos[1]) * _mul_num - fee
 
-                account.add_transaction(
-                    [idx, instrument_id, _text_lst[define.LONG_CLOSE], _last, _pos[1], close_t0_fee, _pos[2],
-                     _update_time,
-                     holding_time,
-                     (_last - _pos[1]) * _mul_num - fee])
-                account.update_fee(close_t0_fee)
+                _fill_price, _fill_lot = get_fill_ret(order=[define.SHORT, None, 1], tick=1, mkt=item)
+                if _fill_lot > 0:
+                    position.close_position(instrument_id, define.LONG, _fill_price, _update_time)
+                    total_return += (_fill_price - _pos[1]) * _mul_num - fee
+
+                    account.add_transaction(
+                        [idx, instrument_id, _text_lst[define.LONG_CLOSE], _last, _fill_price, _pos[1], close_t0_fee,
+                         _pos[2],
+                         _update_time,
+                         holding_time,
+                         (_fill_price - _pos[1]) * _mul_num - fee])
+                    account.update_fee(close_t0_fee)
         elif _signal == define.SHORT_CLOSE:
             _pos = position.get_position_side(instrument_id, define.SHORT)
             if _pos:
@@ -188,15 +218,18 @@ def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', 
                 else:
                     pass
                 holding_time = (dt_curr_time - dt_last_trans_time).seconds
-                position.close_position(instrument_id, define.SHORT, _last, _update_time)
-                total_return += (_pos[1] - _last) * _mul_num - fee
 
-                account.add_transaction(
-                    [idx, instrument_id, _text_lst[define.SHORT_CLOSE], _last, _pos[1], close_t0_fee, _pos[2],
-                     _update_time,
-                     holding_time,
-                     (_pos[1] - _last) * _mul_num - fee])
-                account.update_fee(close_t0_fee)
+                _fill_price, _fill_lot = get_fill_ret(order=[define.LONG, None, 1], tick=1, mkt=item)
+                if _fill_lot > 0:
+                    position.close_position(instrument_id, define.SHORT, _fill_price, _update_time)
+                    total_return += (_pos[1] - _fill_price) * _mul_num - fee
+                    account.add_transaction(
+                        [idx, instrument_id, _text_lst[define.SHORT_CLOSE], _last, _fill_price, _pos[1], close_t0_fee,
+                         _pos[2],
+                         _update_time,
+                         holding_time,
+                         (_pos[1] - _fill_price) * _mul_num - fee])
+                    account.update_fee(close_t0_fee)
         else:  # NO_SIGNAL
             pass
         e2 = time.time()
@@ -217,7 +250,8 @@ def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', 
                 else:
                     pass
                 holding_time = (dt_curr_time - dt_last_trans_time).seconds
-                _return = (close_price - item[1]) * _mul_num - fee
+                # TODO to apply  fill ??now assume all fill with latest price with one tick down
+                _return = (close_price - define.TICK - item[1]) * _mul_num - fee
 
                 total_return += _return
                 total_risk += item[1]
@@ -226,7 +260,9 @@ def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', 
                                                                                                           trade_date))
 
                 account.add_transaction(
-                    [idx, instrument_id, _text_lst[define.LONG_CLOSE], close_price, item[1], close_t0_fee, item[2],
+                    [idx, instrument_id, _text_lst[define.LONG_CLOSE], close_price, close_price - define.TICK, item[1],
+                     close_t0_fee,
+                     item[2],
                      close_timestamp, holding_time, _return])
                 account.update_fee(close_t0_fee)
                 position.close_position(instrument_id=instrument_id, long_short=define.LONG, price=close_price,
@@ -241,13 +277,15 @@ def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', 
                 else:
                     pass
                 holding_time = (dt_curr_time - dt_last_trans_time).seconds
-                _return = ((item[1] - close_price) * _mul_num - fee)
+                # TODO to apply  fill ??now assume all fill with latest price with one tick up, tick hardcode
+                _return = ((item[1] - close_price - define.TICK) * _mul_num - fee)
                 total_risk += item[1]
                 total_return += _return
                 print('final short close with return:{0},total return after:{1}'.format(_return, total_return))
 
                 account.add_transaction(
-                    [idx, instrument_id, _text_lst[define.SHORT_CLOSE], close_price, item[1], close_t0_fee, item[2],
+                    [idx, instrument_id, _text_lst[define.SHORT_CLOSE], close_price, close_price + define.TICK, item[1],
+                     close_t0_fee, item[2],
                      close_timestamp, holding_time, _return])
                 account.update_fee(close_t0_fee)
                 position.close_position(instrument_id=instrument_id, long_short=define.SHORT, price=close_price,
@@ -285,7 +323,8 @@ def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', 
         _ret_path = utils.get_path([define.RESULT_DIR, define.BT_DIR, '{0}_{1}.jpg'.format(instrument_id, trade_date)])
         plt.savefig(_ret_path)
     trans_df = pd.DataFrame(account.transaction,
-                            columns=['idx', 'instrument_id', 'direction', 'price', 'open_price', 'fee', 'open_ts',
+                            columns=['idx', 'instrument_id', 'direction', 'last_price', 'fill_price', 'open_price',
+                                     'fee', 'open_ts',
                                      'close_ts', 'holding_time',
                                      'return'])
     _trans_path = utils.get_path(

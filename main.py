@@ -19,14 +19,14 @@ import os
 
 
 def train_models(start_date='20210701', end_date='20210730', product_id='rb'):
-    trade_date_df = get_trade_dates(start_date=start_date, end_date=end_date)
+    trade_date_df = utils.get_trade_dates(start_date=start_date, end_date=end_date)
     trade_date_df = trade_date_df[trade_date_df.exchangeCD == 'XSHE']
     trade_dates = list(trade_date_df['calendarDate'])
     train_days = 3
     num_date = len(trade_dates)
     idx = 0
     # [20, 60, 120, 600, 1200]
-    predict_window_lst = [120]  # 10s, 30s,1min,5min,10min
+    predict_window_lst = [20]  # 10s, 30s,1min,5min,10min-- 10s
     lag_window_lst = [60]  # 10s, 30s,1min,5min,
     for predict_win in predict_window_lst:
         for lag_win in lag_window_lst:
@@ -78,5 +78,5 @@ def backtest(start_date='20210707', end_date='20210709', product_id='rb'):
 
 
 if __name__ == "__main__":
-    # train_models(start_date='20210701', end_date='20210730', product_id='rb')
-    backtest(start_date='20210707', end_date='20210729', product_id='rb')
+    train_models(start_date='20210701', end_date='20210730', product_id='hc')
+    # backtest(start_date='20210707', end_date='20210715', product_id='rb')
