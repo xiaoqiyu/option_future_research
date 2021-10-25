@@ -131,3 +131,4 @@ cache/
 results/
 strategy/
 conf/.editorconfig
+logs/

@@ -14,10 +14,12 @@ import numpy as np
 from uqer import DataAPI
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import ElasticNet
 from sklearn import metrics
 from sklearn.feature_selection import SelectKBest
 from sklearn.feature_selection import mutual_info_classif
 from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import cross_validate
 from sklearn.decomposition import PCA
 from scipy.stats import rankdata
 import talib as ta
@@ -33,10 +35,12 @@ from copy import deepcopy
 
 import utils.define as define
 import utils.utils as utils
+import research.tick_models.FactorProcess as F
+
+logging.basicConfig(filename='logs/{0}.txt'.format(os.path.split(__file__)[-1].split('.')[0]), level=logging.DEBUG)
+logger = logging.getLogger()
 
 try:
-    # _conf_file = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.CONF_DIR,
-    #                           define.CONF_FILE_NAME)
     _conf_file = utils.get_path([define.CONF_DIR,
                                  define.CONF_FILE_NAME])
     options = get_properties(_conf_file)
@@ -74,137 +78,6 @@ def plot_factor(x=[], y=[], labels=[], tick_step=120):
     plt.show()
 
 
-def get_factor(trade_date="20210701", predict_windows=1200, lag_long=600,
-               lag_short=10,
-               stop_profit=0.005, stop_loss=0.01, instrument_id='', exchange_cd=''):
-    _tick_mkt_path = os.path.join(define.TICK_MKT_DIR, define.exchange_map.get(exchange_cd),
-                                  '{0}_{1}.csv'.format(instrument_id, trade_date.replace('-', '')))
-
-    tick_mkt = pd.read_csv(_tick_mkt_path, encoding='gbk')
-    tick_mkt.columns = define.tb_cols
-    _flag = [_is_trading_time(item.split()[-1]) for item in list(tick_mkt['UpdateTime'])]
-    tick_mkt = tick_mkt[_flag]
-    tick_mkt['log_return'] = tick_mkt['LastPrice'].rolling(2).apply(lambda x: math.log(list(x)[-1] / list(x)[0]))
-    tick_mkt['log_return_short'] = tick_mkt['log_return'].rolling(lag_short).sum()
-    tick_mkt['log_return_long'] = tick_mkt['log_return'].rolling(lag_long).sum()
-    tick_mkt['label_reg'] = tick_mkt['log_return'].rolling(predict_windows).sum().shift(1 - predict_windows)
-    lst_ret_max = list(tick_mkt['label_reg'].rolling(predict_windows).max())
-    lst_ret_min = list(tick_mkt['label_reg'].rolling(predict_windows).min())
-    # 1: profit for long;2: profit for short; 0: not profit for the predict_windows, based on stop_profit threshold
-    # tick_mkt['label_clf'] = [1 if item > math.log(1 + stop_profit) else 2 if item < math.log(1 - stop_profit) else 0 for
-    #                          item in
-    #                          tick_mkt['label_reg']]
-    sum_max = []
-    sum_min = []
-
-    _x, _y = tick_mkt.shape
-    label_cumsum = []
-
-    for idx in range(_x):
-        _cum_sum = tick_mkt['log_return'][idx:idx + predict_windows].cumsum()  # idx+1, 避免未来数据
-        label_cumsum.append(list(_cum_sum)[-1])
-        # label_cumsum.append(_cum_sum.max())
-        # label_cumsum.append(_cum_sum.mean())
-
-        sum_max.append(_cum_sum.max())
-        sum_min.append(_cum_sum.min())
-
-    tick_mkt['label_cumsum'] = label_cumsum
-    tick_mkt['label_clf'] = [
-        1 if item > math.log(1 + stop_profit) else 2 if sum_min[idx] < math.log(1 - stop_profit) else 0 for
-        idx, item in enumerate(sum_max)]
-
-    num_class1 = tick_mkt[tick_mkt.label_clf == 1].shape[0]
-    num_class2 = tick_mkt[tick_mkt.label_clf == 2].shape[0]
-    # print('label num for 0, 1, 2 is:', _x - num_class1 - num_class2, num_class1, num_class2)
-    _diff = list(tick_mkt['InterestDiff'])
-    _vol = list(tick_mkt['Volume'])
-
-    # factor calculate
-    open_close_ratio = []
-    for idx, item in enumerate(_diff):
-        try:
-            open_close_ratio.append(item / (_vol[idx] - item))
-        except Exception as ex:
-            open_close_ratio.append(open_close_ratio[-1])
-            # print(idx, item, _vol[idx], ex)
-    tick_mkt['open_close_ratio'] = open_close_ratio
-    tick_mkt['buy_sell_spread'] = tick_mkt['BidPrice1'] - tick_mkt['AskPrice1']
-    lst_bid_price = list(tick_mkt['BidPrice1'])
-    lst_bid_vol = list(tick_mkt['BidVolume1'])
-    lst_ask_price = list(tick_mkt['AskPrice1'])
-    lst_ask_vol = list(tick_mkt['AskVolume1'])
-
-    v_b = [0]
-    v_a = [0]
-
-    for i in range(1, _x):
-        v_b.append(
-            0 if lst_bid_price[i] < lst_bid_price[i - 1] else lst_bid_vol[i] - lst_bid_vol[i - 1] if lst_bid_price[i] ==
-                                                                                                     lst_bid_price[
-                                                                                                         i - 1] else
-            lst_bid_vol[i])
-
-        v_a.append(
-            0 if lst_ask_price[i] < lst_ask_price[i - 1] else lst_ask_vol[i] - lst_ask_vol[i - 1] if lst_ask_price[i] ==
-                                                                                                     lst_ask_price[
-                                                                                                         i - 1] else
-            lst_ask_vol[i])
-    lst_oi = []
-    lst_oir = []
-    lst_aoi = []
-    for idx, item in enumerate(v_a):
-        lst_oi.append(v_b[idx] - item)
-        lst_oir.append((v_b[idx] - item) / (v_b[idx] + item) if v_b[idx] + item != 0 else 0.0)
-        lst_aoi.append((v_b[idx] - item) / (lst_ask_price[idx] - lst_bid_price[idx]))
-    tick_mkt['oi'] = lst_oi
-    tick_mkt['oir'] = lst_oir
-    tick_mkt['aoi'] = lst_aoi
-    tick_mkt['trend_short'] = tick_mkt['LastPrice'].rolling(lag_short).apply(
-        lambda x: (list(x)[-1] - list(x)[0]) / lag_short)
-    tick_mkt['trend_long'] = tick_mkt['LastPrice'].rolling(lag_long).apply(
-        lambda x: (list(x)[-1] - list(x)[0]) / lag_long)
-    tick_mkt['trenddiff'] = tick_mkt['trend_short'] - tick_mkt['trend_long']
-    tick_mkt['trend_ls_ratio'] = tick_mkt['trend_short'] / tick_mkt['trend_long']
-    # for idx, item in enumerate(list(tick_mkt['trend_ls_ratio'])):
-    #     if item == np.inf or item == -np.inf:
-    #         print(idx, item)
-    tick_mkt['vwap'] = tick_mkt['Turnover'] / tick_mkt['Volume']
-    tick_mkt['vol_short'] = tick_mkt['Volume'].rolling(lag_short).sum()
-    tick_mkt['vol_long'] = tick_mkt['Volume'].rolling(lag_long).sum()
-    tick_mkt['vol_ls_ratio'] = tick_mkt['vol_short'] / tick_mkt['vol_long']
-    tick_mkt['turnover_short'] = tick_mkt['Turnover'].rolling(lag_short).sum()
-    tick_mkt['turnover_long'] = tick_mkt['Turnover'].rolling(lag_long).sum()
-    tick_mkt['turnover_ls_ratio'] = tick_mkt['turnover_short'] / tick_mkt['turnover_long']
-    tick_mkt['vwap_short'] = tick_mkt['turnover_short'] / tick_mkt['vol_short']
-    tick_mkt['vwap_long'] = tick_mkt['turnover_long'] / tick_mkt['vol_long']
-    tick_mkt['vwap_ls_ratio'] = tick_mkt['vwap_short'] / tick_mkt['vwap_long']
-    dif, dea, macd = ta.MACD(tick_mkt['LastPrice'], fastperiod=12, slowperiod=26, signalperiod=9)
-    tick_mkt['macd'] = macd
-    tick_mkt['dif'] = dif
-    tick_mkt['dea'] = dea
-    tick_mkt['bs_tag'] = tick_mkt['LastPrice'].rolling(2).apply(lambda x: 1 if list(x)[-1] > list(x)[0] else -1)
-    tick_mkt['bs_vol'] = tick_mkt['bs_tag'] * tick_mkt['Volume']
-    tick_mkt['bs_vol_long'] = tick_mkt['bs_vol'].rolling(lag_long).sum()
-    tick_mkt['bs_vol_short'] = tick_mkt['bs_vol'].rolling(lag_short).sum()
-    tick_mkt['bs_vol_diff'] = tick_mkt['bs_vol_short'] - tick_mkt['bs_vol_long']
-    tick_mkt['bs_vol_ls_ratio'] = tick_mkt['bs_vol_short'] / tick_mkt['bs_vol_long']
-    tick_mkt['bs2vol_ratio_short'] = tick_mkt['bs_vol_short'] / tick_mkt['vol_short']
-    tick_mkt['bs2vol_ratio_long'] = tick_mkt['bs_vol_long'] / tick_mkt['vol_long']
-    tick_mkt['bs2vol_ls_ratio'] = tick_mkt['bs2vol_ratio_short'] / tick_mkt['bs2vol_ratio_long']
-    _factor_lst = list(tick_mkt.columns)
-    print(_factor_lst)
-    for col in define.skip_raw_cols:
-        try:
-            _factor_lst.remove(col)
-        except Exception as ex:
-            print('col:{0} not exist'.format(col))
-    tick_mkt = tick_mkt.replace(np.inf, np.nan)
-    tick_mkt = tick_mkt.replace(-np.inf, np.nan)
-    tick_mkt = tick_mkt.dropna()
-    return tick_mkt[_factor_lst]
-
-
 def get_selected_factor(factor_lst=[]):
     factor_lst.remove('Exchange')
     factor_lst.remove('Instrument')
@@ -225,17 +98,18 @@ def train_model_reg(predict_windows=120,
     df_corr_lst = []
     _lin_reg_model = LinearRegression()
     _svr_model = SVR(C=1.0, epsilon=0.2)
-    reg_model = _lin_reg_model
+    _ev_model = ElasticNet(random_state=0)
+    reg_model = _ev_model
     # pca = PCA(n_components=5, svd_solver='full')
     print('start train model 1')
     for instrument_id, date, exchange_cd in train_dates.values:
         print("train for trade date:", date)
         start_ts = time.time()
-        df_factor = get_factor(trade_date=date,
-                               predict_windows=predict_windows,
-                               lag_long=lag_windows,
-                               stop_profit=stop_profit, stop_loss=stop_loss, instrument_id=instrument_id,
-                               exchange_cd=exchange_cd)
+        df_factor = F.get_factor(trade_date=date,
+                                 predict_windows=predict_windows,
+                                 lag_long=lag_windows,
+                                 instrument_id=instrument_id,
+                                 exchange_cd=exchange_cd)
         end_ts = time.time()
         print('update factor timestamp:{0}'.format(end_ts - start_ts))
         cols = list(df_factor.columns)
@@ -303,11 +177,11 @@ def train_model_reg(predict_windows=120,
         # print('coef_:{0}\n'.format(list(zip(top_feature_lst, lin_reg_model.coef_))))
 
     print('test for trade date:', test_dates[1])
-    df_factor = get_factor(trade_date=test_dates[1],
-                           predict_windows=predict_windows,
-                           lag_long=lag_windows,
-                           stop_profit=stop_profit, stop_loss=stop_loss, instrument_id=test_dates[0],
-                           exchange_cd=test_dates[2])
+    df_factor = F.get_factor(trade_date=test_dates[1],
+                             predict_windows=predict_windows,
+                             lag_long=lag_windows,
+                             instrument_id=test_dates[0],
+                             exchange_cd=test_dates[2])
     # cols = list(df_factor.columns)
     # cols.remove('label_clf')
     _update_time = list(df_factor['UpdateTime'])
@@ -351,36 +225,47 @@ def train_model_reg(predict_windows=120,
     #                                      metrics.r2_score(y_test, y_pred)))
 
 
-def train_model_sta(predict_windows=120,
-                    lag_windows=60,
-                    stop_profit=0.001, stop_loss=0.01, start_date='', end_date='', top_k_features=5, train_days=3,
-                    product_id='RB'):
+def train_model_reg_intraday(predict_windows=120,
+                             lag_windows=60,
+                             start_date='', end_date='', top_k_features=5,
+                             train_days=3,
+                             product_id='RB'):
     df = DataAPI.MktFutdGet(endDate=end_date, beginDate=start_date, pandas="1")
     df = df[df.mainCon == 1]
     df = df[df.contractObject == product_id][['ticker', 'tradeDate', 'exchangeCD']]
     train_dates = df.iloc[-train_days:-1, :]
     test_dates = df.iloc[-1, :]
     acc_scores = {}
-    factor_lst = []
+    # factor_lst = []
     cnt = 0
     df_corr_lst = []
-    lin_reg_model = LinearRegression()
+    _lin_reg_model = LinearRegression()
+    _svr_model = SVR(C=1.0, epsilon=0.2)
+    reg_model = _lin_reg_model
     # pca = PCA(n_components=5, svd_solver='full')
     print('start train model 1')
+    final_df_factor = None
+    factor_cnt = 0
     for instrument_id, date, exchange_cd in train_dates.values:
         print("train for trade date:", date)
-        df_factor = get_factor(trade_date=date,
-                               predict_windows=predict_windows,
-                               lag_long=lag_windows,
-                               stop_profit=stop_profit, stop_loss=stop_loss, instrument_id=instrument_id,
-                               exchange_cd=exchange_cd)
-
+        start_ts = time.time()
+        df_factor = F.get_factor(trade_date=date,
+                                 predict_windows=predict_windows,
+                                 lag_long=lag_windows, instrument_id=instrument_id,
+                                 exchange_cd=exchange_cd)
+        if factor_cnt == 0:
+            final_df_factor = deepcopy(df_factor)
+        else:
+            final_df_factor = final_df_factor.append(df_factor)
+        factor_cnt += 1
+        end_ts = time.time()
+        print('update factor timestamp:{0}'.format(end_ts - start_ts))
         cols = list(df_factor.columns)
-        cols.remove('label_clf')
+        # cols.remove('label_clf')
         cols.remove('UpdateTime')
         cols.remove('label_reg')
         df_corr = df_factor[cols].corr()
-        factor_lst.append(df_factor[cols])
+        # factor_lst.append(df_factor[cols])
         df_score = df_corr['label_cumsum'].abs()
         _features = list(df_score.index)
         for idx, item in enumerate(_features):
@@ -403,6 +288,121 @@ def train_model_sta(predict_windows=120,
     print("top features", _tmp[:top_k_features])
     top_feature_lst = [item[0] for item in _tmp[:top_k_features]]
 
+    if False:  # cal factor corr
+        if df_corr_lst:
+            df_corr_sum = df_corr_lst[0]
+            for _df_corr in df_corr_lst[1:]:
+                df_corr_sum = (df_corr_sum.abs() + _df_corr.abs()) / 2
+        _corr_set = set()
+        for _col in list(df_corr_sum.columns):
+            index_lst = list(df_corr_sum[df_corr_sum[_col] > 0.8 & df_corr_sum[_col] != 1.0].index)
+            for _tmp in index_lst:
+                _tmp_lst = sorted([_col, _tmp])
+                _v = '{0}-{1}'.format(_tmp_lst[0], _tmp_lst[1])
+                _corr_set.add(_v)
+        logger.debug('corr average', _corr_set)
+
+    cv_results = cross_validate(reg_model, final_df_factor[top_feature_lst], final_df_factor['label_cumsum'], cv=3,
+                                n_jobs=3, scoring=('r2', 'neg_mean_squared_error'))
+    print('train results:', cv_results)
+    # print('intercept:', lin_reg_model.intercept_)
+    # print('coef_:{0}\n'.format(list(zip(top_feature_lst, lin_reg_model.coef_))))
+
+    reg_model.fit(final_df_factor[top_feature_lst], final_df_factor['label_cumsum'])
+
+    print('test for trade date:', test_dates[1])
+    df_factor = F.get_factor(trade_date=test_dates[1],
+                             predict_windows=predict_windows,
+                             lag_long=lag_windows, instrument_id=test_dates[0],
+                             exchange_cd=test_dates[2])
+    # cols = list(df_factor.columns)
+    # cols.remove('label_clf')
+    _update_time = list(df_factor['UpdateTime'])
+    # x_test = pca.transform(df_factor[top_feature_lst])
+    y_pred = reg_model.predict(df_factor[top_feature_lst])
+    ret_str = 'rmse:{0}, r2:{1}, date:{2},predict windows:{3}, lag windows:{4}, instrument_id:{5}\n'.format(
+        np.sqrt(metrics.mean_squared_error(df_factor['label_cumsum'], y_pred)),
+        metrics.r2_score(df_factor['label_cumsum'], y_pred), test_dates[1], predict_windows, lag_windows, instrument_id)
+    r_ret = [item - y_pred[idx] for idx, item in enumerate(list(df_factor['label_cumsum']))]
+    # plt.plot(y_pred)
+    # plt.plot(df_factor['label_cumsum'])
+    # plt.plot(r_ret)
+    # plt.show()
+    _summary_path = utils.get_path([define.RESULT_DIR, define.TICK_MODEL_DIR,
+                                    'summary.txt'])
+    _evalute_path = utils.get_path([define.RESULT_DIR, define.TICK_MODEL_DIR,
+                                    'model_evaluate.json'])
+    with open(_summary_path, 'a') as f:
+        f.write(ret_str)
+
+    _model_evaluate = utils.load_json_file(_evalute_path) or dict()
+    _ret_lst = _model_evaluate.get('{0}_{1}'.format(instrument_id, test_dates[1].replace('-', ''))) or list()
+    _ret_lst.append([np.sqrt(metrics.mean_squared_error(df_factor['label_cumsum'], y_pred)),
+                     metrics.r2_score(df_factor['label_cumsum'], y_pred), test_dates[1], predict_windows,
+                     lag_windows])
+    _model_evaluate.update({'{0}_{1}'.format(instrument_id, test_dates[1].replace('-', '')): _ret_lst})
+    utils.write_json_file(_evalute_path, _model_evaluate)
+
+    df_pred = pd.DataFrame({'UpdateTime': df_factor['UpdateTime'], 'pred': y_pred, 'label': df_factor['label_cumsum']})
+    _file_name = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR, define.TICK_MODEL_DIR,
+                              'pred_{0}_{1}_{2}_{3}.csv'.format(instrument_id, test_dates[1].replace('-', ''),
+                                                                predict_windows, lag_windows))
+    df_pred.to_csv(_file_name, index=False)
+    del df_factor
+
+
+def train_model_sta(predict_windows=120,
+                    lag_windows=60,
+                    start_date='', end_date='', top_k_features=5, train_days=3,
+                    product_id='RB'):
+    df = DataAPI.MktFutdGet(endDate=end_date, beginDate=start_date, pandas="1")
+    df = df[df.mainCon == 1]
+    df = df[df.contractObject == product_id][['ticker', 'tradeDate', 'exchangeCD']]
+    train_dates = df.iloc[-train_days:-1, :]
+    test_dates = df.iloc[-1, :]
+    acc_scores = {}
+    factor_lst = []
+    cnt = 0
+    df_corr_lst = []
+    lin_reg_model = LinearRegression()
+    # pca = PCA(n_components=5, svd_solver='full')
+    logger.info('start train model 1')
+    for instrument_id, date, exchange_cd in train_dates.values:
+        logger.info("train for trade date:", date)
+        df_factor = F.get_factor(trade_date=date,
+                                 predict_windows=predict_windows,
+                                 lag_long=lag_windows,
+                                 instrument_id=instrument_id,
+                                 exchange_cd=exchange_cd)
+
+        cols = list(df_factor.columns)
+        # cols.remove('label_clf')
+        cols.remove('UpdateTime')
+        cols.remove('label_reg')
+        df_corr = df_factor[cols].corr()
+        factor_lst.append(df_factor[cols])
+        df_score = df_corr['label_cumsum'].abs()
+        _features = list(df_score.index)
+        for idx, item in enumerate(_features):
+            if item == 'label_cumsum':
+                continue
+            if item in acc_scores:
+                acc_scores[item] += df_score[idx]
+            else:
+                acc_scores[item] = df_score[idx]
+        top_features = df_corr['label_cumsum'].abs().sort_values(ascending=False)[1:top_k_features]
+        logger.info(list(top_features.index), top_features)
+        _file_name = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR, define.TICK_MODEL_DIR,
+                                  'corr_reg_{0}_{1}_{2}.csv'.format(date, predict_windows, lag_windows))
+        df_corr.to_csv(_file_name)
+        df_corr_lst.append(df_corr)
+    _scores = [item / (train_days - 1) for item in list(acc_scores.values())]
+    _features = list(acc_scores.keys())
+    _tmp = list(zip(_features, _scores))
+    _tmp = sorted(_tmp, key=lambda x: x[1], reverse=True)
+    logger.info("top features", _tmp[:top_k_features])
+    top_feature_lst = [item[0] for item in _tmp[:top_k_features]]
+
     if df_corr_lst:
         df_corr_sum = df_corr_lst[0]
         for _df_corr in df_corr_lst[1:]:
@@ -418,14 +418,13 @@ def train_model_sta(predict_windows=120,
             _tmp_lst = sorted([_col, _tmp])
             _v = '{0}-{1}'.format(_tmp_lst[0], _tmp_lst[1])
             _corr_set.add(_v)
-    print("corr average:")
-    pprint.pprint(_corr_set)
+    logger.debug("corr average:{0}".format(_corr_set))
 
     for df_factor in factor_lst:
         try:
             vif = [variance_inflation_factor(df_factor[top_feature_lst].values, i) for i in
                    range(df_factor[top_feature_lst].shape[1])]
-            pprint.pprint(list(zip(top_feature_lst, vif)))
+            logger.info(list(zip(top_feature_lst, vif)))
             # evaluate PCA
             fit_result = sm.OLS(df_factor['label_cumsum'], df_factor[top_feature_lst]).fit()
             # print('before pca', '*' * 40)
@@ -435,12 +434,12 @@ def train_model_sta(predict_windows=120,
             # pprint.pprint(fit_result.summary())
             del df_factor
         except Exception as ex:
-            print('train error')
+            logger.info('train error with error msg:{0}'.format(ex))
 
 
 def train_model_clf(predict_windows=120,
                     lag_windows=60,
-                    stop_profit=0.001, stop_loss=0.01, start_date='', end_date='', top_k_features=1, train_days=3):
+                    start_date='', end_date='', top_k_features=1, train_days=3):
     df = DataAPI.MktFutdGet(endDate=end_date, beginDate=start_date, pandas="1")
     df = df[df.mainCon == 1]
     df = df[df.contractObject == 'RB'][['ticker', 'tradeDate']]
@@ -452,18 +451,18 @@ def train_model_clf(predict_windows=120,
     factor_lst = []
     cnt = 0
     for instrument_id, date in train_dates.values:
-        print("train for trade date:", date)
-        df_factor = get_factor(trade_date=date,
-                               predict_windows=predict_windows,
-                               lag_long=lag_windows,
-                               stop_profit=stop_profit, stop_loss=stop_loss, instrument_id=instrument_id)
+        logger.info("train for trade date with date:{0}", date)
+        df_factor = F.get_factor(trade_date=date,
+                                 predict_windows=predict_windows,
+                                 lag_long=lag_windows,
+                                 instrument_id=instrument_id)
 
         cols = list(df_factor.columns)
         cols.remove('label_clf')
         cols.remove('UpdateTime')
         model1.fit(df_factor[cols], df_factor['label_clf'])
         factor_lst.append(df_factor)
-        print("model selection scores for mutual information:", list(zip(cols, model1.scores_)))
+        logger.info("model selection scores for mutual information:{0}".format(list(zip(cols, model1.scores_))))
         # acc_scores.append(list(model1.scores_))
         cnt += 1
         rank_score = rankdata(model1.scores_)
@@ -476,20 +475,20 @@ def train_model_clf(predict_windows=120,
                     # acc_scores[cols[idx]] += item * cnt / (train_days - 1)
                     acc_scores[cols[idx]] += item
             except Exception as ex:
-                print(idx, ex, cols)
+                logger.info('id:{0}, error:{1}, col:{2}'.format(idx, ex, cols))
         # print("model selection pvalues for mutual information:", model1.pvalues_)
     sorted_scores = sorted(acc_scores.items(), reverse=True, key=lambda x: x[1])[-top_k_features:]
     sorted_features = [item[0] for item in sorted_scores]
-    print(sorted_scores)
+    logger.info(sorted_scores)
 
     for df_factor in factor_lst:
         model2.fit(df_factor[sorted_features], df_factor['label_clf'])
-    print('test for trade date:', test_dates[1])
+    logger.info('test for trade date:{0}'.format(test_dates[1]))
 
-    df_factor = get_factor(trade_date=test_dates[1],
-                           predict_windows=predict_windows,
-                           lag_long=lag_windows,
-                           stop_profit=stop_profit, stop_loss=stop_loss, instrument_id=test_dates[0])
+    df_factor = F.get_factor(trade_date=test_dates[1],
+                             predict_windows=predict_windows,
+                             lag_long=lag_windows,
+                             instrument_id=test_dates[0])
     # cols = list(df_factor.columns)
     # cols.remove('label_clf')
     _update_time = list(df_factor['UpdateTime'])
@@ -512,23 +511,17 @@ def train_model_clf(predict_windows=120,
     num_prec1 = len([item for idx, item in enumerate(y_pred) if y_true[idx] == 1 and item == 1])
     num_prec2 = len([item for idx, item in enumerate(y_pred) if y_true[idx] == 2 and item == 2])
 
-    print('true vs pred:', '(0,{},{},{})'.format(true0, pred0, num_prec0 / pred0 if pred0 > 0 else 0))
-    print('true vs pred:', '(1,{},{},{})'.format(true1, pred1, num_prec1 / pred1 if pred1 > 0 else 0))
-    print('true vs pred:', '(2,{},{},{})'.format(true2, pred2, num_prec2 / pred2 if pred2 > 0 else 0))
+    logger.info('true vs pred:', '(0,{},{},{})'.format(true0, pred0, num_prec0 / pred0 if pred0 > 0 else 0))
+    logger.info('true vs pred:', '(1,{},{},{})'.format(true1, pred1, num_prec1 / pred1 if pred1 > 0 else 0))
+    logger.info('true vs pred:', '(2,{},{},{})'.format(true2, pred2, num_prec2 / pred2 if pred2 > 0 else 0))
 
     # scores for clf models
     # score = metrics.precision_score(y_pred, df_factor['label_clf'], average='macro')
-    # print("precision macro score:", score)
     # score = metrics.precision_score(y_pred, df_factor['label_clf'], average='micro')
-    # print("precision micro score:", score)
     # score = metrics.recall_score(y_pred, df_factor['label_clf'], average='macro')
-    # print("recall macro score:", score)
     # score = metrics.recall_score(y_pred, df_factor['label_clf'], average='micro')
-    # print("recall micro score:", score)
     # score = metrics.f1_score(y_pred, df_factor['label_clf'], average='macro')
-    # print("f1 macro score", score)
     # score = metrics.f1_score(y_pred, df_factor['label_clf'], average='micro')
-    # print("f1 micro score", score)
     df_pred = pd.DataFrame({'pred': y_pred, 'true': df_factor['label_clf'], 'UpdateTime': _update_time_str})
     _file_name = os.path.join(os.path.abspath(os.pardir), define.RESULT_DIR, define.TICK_MODEL_DIR, 'df_pred.csv')
     df_pred.to_csv(_file_name)
@@ -582,7 +575,7 @@ def factor_process(product_id='m', trade_date='20210105', instrument_id='m2105',
 
 def train_model_ols(predict_windows=120,
                     lag_windows=60,
-                    stop_profit=0.001, stop_loss=0.01, start_date='', end_date='', top_k_features=5, train_days=3,
+                    start_date='', end_date='', top_k_features=5, train_days=3,
                     product_id='RB'):
     df = DataAPI.MktFutdGet(endDate=end_date, beginDate=start_date, pandas="1")
     df = df[df.mainCon == 1]
@@ -598,11 +591,11 @@ def train_model_ols(predict_windows=120,
     # lin_reg_model_ols = LinearRegression()
     for instrument_id, date, exchange_cd in train_dates.values:
         print("train for trade date:", date)
-        df_factor = get_factor(trade_date=date,
-                               predict_windows=predict_windows,
-                               lag_long=lag_windows,
-                               stop_profit=stop_profit, stop_loss=stop_loss, instrument_id=instrument_id,
-                               exchange_cd=exchange_cd)
+        df_factor = F.get_factor(trade_date=date,
+                                 predict_windows=predict_windows,
+                                 lag_long=lag_windows,
+                                 instrument_id=instrument_id,
+                                 exchange_cd=exchange_cd)
 
         cols = list(df_factor.columns)
         cols.remove('label_clf')
@@ -675,7 +668,7 @@ if __name__ == '__main__':
             while idx < num_date - train_days:
                 train_model_reg(predict_windows=predict_win,
                                 lag_windows=lag_win,
-                                stop_profit=0.001, stop_loss=0.01, top_k_features=10, start_date=trade_dates[idx],
+                                top_k_features=10, start_date=trade_dates[idx],
                                 end_date=trade_dates[idx + train_days],
                                 train_days=train_days, product_id='RB')
                 idx += train_days
