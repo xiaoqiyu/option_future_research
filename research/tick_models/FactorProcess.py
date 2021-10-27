@@ -6,20 +6,12 @@
 # @File    : FactorProcess.py
 
 import math
-import time
-import uqer
-import pprint
 import numpy as np
 import talib as ta
 import pandas as pd
-import statsmodels.api as sm
-from editorconfig import get_properties, EditorConfigError
-from statsmodels.stats.outliers_influence import variance_inflation_factor
-from sklearn.svm import SVR
 import logging
 import os
-import gc
-from copy import deepcopy
+import matplotlib.pyplot as plt
 
 import utils.define as define
 import utils.utils as utils
@@ -41,6 +33,105 @@ def _normalized_by_base(x: list, normalized_dict: dict, key: str) -> list:
         return x
     else:
         return [item / _normalized_base for item in x]
+
+
+def _cal_turning_item(x: list) -> tuple:
+    if not x:
+        return 0, np.nan
+    if len(x) == 1:
+        return 0, np.nan
+    if len(x) == 2:
+        return -1, x[0]
+    try:
+        if (x[-1] - x[-2]) * (x[-2] - x[-3]) > 0:
+            return -2, x[0]
+        else:
+            return -1, x[1]
+    except Exception as ex:
+        raise ValueError("Error to cal turning with error:{0}".format(ex))
+
+
+def log_return(x):
+    return np.log(x).diff()
+
+
+def realized_volatility(x):
+    return np.sqrt(np.sum(x ** 2))
+
+
+def count_unique(x):
+    return len(np.unique(x))
+
+
+def cal_turning(x: list) -> tuple:
+    idx_lst = []
+    val_lst = []
+    if len(x) == 1:
+        idx_lst.append(0)
+        val_lst.append(np.nan)
+    elif len(x) == 2:
+        _idx, _val = _cal_turning_item(x)
+        return [0], [_val]
+    else:
+        _len = len(x)
+        idx_lst.append(0)
+        val_lst.append(np.nan)
+        idx_lst.append(0)
+        val_lst.append(x[0])
+        _idx, _val = _cal_turning_item(x)
+        idx_lst.append(2 + _idx)
+        val_lst.append(_val)
+        for idx in range(3, _len, 1):
+            _idx, _val = _cal_turning_item(x[idx - 3:idx])
+            idx_lst.append(idx + _idx)
+            val_lst.append(_val)
+    return idx_lst, val_lst
+
+
+def cal_slope(x: list, turn_idx: list, turn_val: list) -> list:
+    assert len(x) == len(turn_idx)
+    assert len(x) == len(turn_val)
+    ret = []
+    for idx, item in enumerate(x):
+        if idx == 0:
+            ret.append(np.nan)
+            continue
+        ret.append((x[idx] - turn_val[idx]) / (idx - turn_idx[idx]))
+    return ret
+
+
+def cal_cos(x: list, turn_idx: list, turn_val: list) -> list:
+    assert len(x) == len(turn_idx)
+    assert len(x) == len(turn_val)
+    ret = []
+    for idx, item in enumerate(x):
+        if idx == 0:
+            ret.append(0)
+            continue
+        a = np.array([idx - turn_idx[idx], item - turn_val[idx]])
+        b = np.array([0, 1])
+        ret.append(a.dot(b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+    return ret
+
+
+def plot_factor(x=[], y=[], labels=[], tick_step=120):
+    fig = plt.figure()
+    ax1 = fig.add_subplot(111)
+    ax1.plot(x, label="factor")
+    ax1.legend()
+
+    ax2 = ax1.twinx()
+    ax2.plot(y, 'r', label='log return')
+    ax2.legend()
+    if labels:
+        _idx_lst = list(range(len(x)))
+        ax1.set_xticks(_idx_lst[::120])
+        trade_date_str = [item.replace('-', '') for item in labels]
+        ax1.set_xticklabels(trade_date_str[::tick_step], rotation=30)
+    plt.show()
+
+
+
 
 
 def get_factor(trade_date: str = "20210701", predict_windows: int = 1200, lag_long: int = 600,
@@ -79,11 +170,12 @@ def get_factor(trade_date: str = "20210701", predict_windows: int = 1200, lag_lo
     tick_mkt['wap'] = (tick_mkt['BidPrice1'] * tick_mkt['AskVolume1'] + tick_mkt['AskPrice1'] * tick_mkt[
         'BidVolume1']) / (tick_mkt['AskVolume1'] + tick_mkt['BidVolume1'])
     tick_mkt['log_return'] = tick_mkt['LastPrice'].rolling(2).apply(lambda x: math.log(list(x)[-1] / list(x)[0]))
+    # tick_mkt['log_return'] = tick_mkt['wap'].rolling(2).apply(lambda x: math.log(list(x)[-1] / list(x)[0]))
     tick_mkt['log_return_short'] = tick_mkt['log_return'].rolling(lag_short).sum()
     tick_mkt['log_return_long'] = tick_mkt['log_return'].rolling(lag_long).sum()
-    tick_mkt['label_reg'] = tick_mkt['log_return'].rolling(predict_windows).sum().shift(1 - predict_windows)
-    lst_ret_max = list(tick_mkt['label_reg'].rolling(predict_windows).max())
-    lst_ret_min = list(tick_mkt['label_reg'].rolling(predict_windows).min())
+    # tick_mkt['label_reg'] = tick_mkt['log_return'].rolling(predict_windows).sum().shift(1 - predict_windows)
+    # lst_ret_max = list(tick_mkt['label_reg'].rolling(predict_windows).max())
+    # lst_ret_min = list(tick_mkt['label_reg'].rolling(predict_windows).min())
     # 1: profit for long;2: profit for short; 0: not profit for the predict_windows, based on stop_profit threshold
     # tick_mkt['label_clf'] = [1 if item > math.log(1 + stop_profit) else 2 if item < math.log(1 - stop_profit) else 0 for
     #                          item in
@@ -96,7 +188,6 @@ def get_factor(trade_date: str = "20210701", predict_windows: int = 1200, lag_lo
 
     for idx in range(_x):
         _cum_sum = tick_mkt['log_return'][idx:idx + predict_windows].cumsum()  # idx+1, 避免未来数据
-        # label_cumsum.append(list(_cum_sum)[-1])
         label_cumsum.append(list(_cum_sum)[-1])
         # label_cumsum.append(_cum_sum.max())
         # label_cumsum.append(_cum_sum.mean())
@@ -125,7 +216,9 @@ def get_factor(trade_date: str = "20210701", predict_windows: int = 1200, lag_lo
             open_close_ratio.append(open_close_ratio[-1])
             # print(idx, item, _vol[idx], ex)
     tick_mkt['open_close_ratio'] = open_close_ratio
-    tick_mkt['buy_sell_spread'] = tick_mkt['BidPrice1'] - tick_mkt['AskPrice1']
+    tick_mkt['price_spread'] = (tick_mkt['BidPrice1'] - tick_mkt['AskPrice1']) / (
+                tick_mkt['BidPrice1'] + tick_mkt['AskPrice1'] / 2)
+    tick_mkt['buy_sell_spread'] = abs(tick_mkt['BidPrice1'] - tick_mkt['AskPrice1'])
     lst_bid_price = list(tick_mkt['BidPrice1'])
     lst_bid_vol = list(tick_mkt['BidVolume1'])
     lst_ask_price = list(tick_mkt['AskPrice1'])
@@ -156,6 +249,18 @@ def get_factor(trade_date: str = "20210701", predict_windows: int = 1200, lag_lo
     tick_mkt['oi'] = lst_oi
     tick_mkt['oir'] = lst_oir
     tick_mkt['aoi'] = lst_aoi
+
+    _lst_last_price = list(tick_mkt['LastPrice'])
+    _lst_turn_idx, _lst_turn_val = cal_turning(_lst_last_price)
+    _lst_slope = cal_slope(_lst_last_price, _lst_turn_idx, _lst_turn_val)
+    _lst_cos = cal_cos(_lst_last_price, _lst_turn_idx, _lst_turn_val)
+
+    # plot_factor(_lst_turn_val[1:], _lst_last_price[1:])
+    # plot_factor(_lst_cos[1:100], list(tick_mkt['log_return'][1:100])[1:])
+
+    tick_mkt['slope'] = _lst_slope
+    tick_mkt['cos'] = _lst_cos
+
     tick_mkt['trend_short'] = tick_mkt['LastPrice'].rolling(lag_short).apply(
         lambda x: (list(x)[-1] - list(x)[0]) / lag_short)
     tick_mkt['trend_long'] = tick_mkt['LastPrice'].rolling(lag_long).apply(
@@ -189,6 +294,7 @@ def get_factor(trade_date: str = "20210701", predict_windows: int = 1200, lag_lo
     tick_mkt['bs2vol_ratio_short'] = tick_mkt['bs_vol_short'] / tick_mkt['vol_short']
     tick_mkt['bs2vol_ratio_long'] = tick_mkt['bs_vol_long'] / tick_mkt['vol_long']
     tick_mkt['bs2vol_ls_ratio'] = tick_mkt['bs2vol_ratio_short'] / tick_mkt['bs2vol_ratio_long']
+
     for _base_col, _ref_col in define.normalized_cols:
         _arr = _normalized_by_base(tick_mkt[_base_col], normalized, _ref_col)
         tick_mkt['norm_{0}'.format(_base_col)] = _arr
@@ -203,4 +309,6 @@ def get_factor(trade_date: str = "20210701", predict_windows: int = 1200, lag_lo
     tick_mkt = tick_mkt.replace(np.inf, np.nan)
     tick_mkt = tick_mkt.replace(-np.inf, np.nan)
     tick_mkt = tick_mkt.dropna()
+    # # FIXME  hardcode some features
+    # _factor_lst = ['macd', 'log_return', 'aoi', 'norm_wap', 'trenddiff', 'UpdateTime', 'slope', 'cos', 'label_cumsum']
     return tick_mkt[_factor_lst]

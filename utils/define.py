@@ -50,9 +50,10 @@ skip_raw_cols_normalized = ['Exchange', 'InstrumentID', 'OpenInterest', 'Interes
                             'turnover_short', 'turnover_long', 'vwap_short', 'vwap_long', 'bs_vol', 'bs_vol_long',
                             'bs_vol_short', 'bs_vol_diff', 'bs_tag']
 
-normalized_cols = [('LastPrice', 'LastPrice'), ('wap', 'LastPrice'), ('OpenInterest', 'OpenInterest'),
-                   ('vwap', 'LastPrice'), ('Volume', 'Volume'), ('BidPrice1', 'LastPrice'), ('AskPrice1', 'LastPrice')]
+# normalized_cols = [('LastPrice', 'LastPrice'), ('wap', 'LastPrice'), ('OpenInterest', 'OpenInterest'),
+#                    ('vwap', 'LastPrice'), ('Volume', 'Volume'), ('BidPrice1', 'LastPrice'), ('AskPrice1', 'LastPrice')]
 
+normalized_cols = [('wap', 'LastPrice')]
 # normalized_cols = []
 
 BASE_DIR = 'option_future_research'

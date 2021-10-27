@@ -15,11 +15,14 @@ from uqer import DataAPI
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from sklearn.linear_model import ElasticNet
+from sklearn.ensemble import RandomForestRegressor
 from sklearn import metrics
 from sklearn.feature_selection import SelectKBest
 from sklearn.feature_selection import mutual_info_classif
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import cross_validate
+from sklearn.model_selection import cross_val_score
+from sklearn.metrics import mean_absolute_percentage_error
 from sklearn.decomposition import PCA
 from scipy.stats import rankdata
 import talib as ta
@@ -61,23 +64,6 @@ def _is_trading_time(time_str=''):
         return False
 
 
-def plot_factor(x=[], y=[], labels=[], tick_step=120):
-    fig = plt.figure()
-    ax1 = fig.add_subplot(111)
-    ax1.plot(x, label="factor")
-    ax1.legend()
-
-    ax2 = ax1.twinx()
-    ax2.plot(y, 'r', label='log return')
-    ax2.legend()
-    if labels:
-        _idx_lst = list(range(len(x)))
-        ax1.set_xticks(_idx_lst[::120])
-        trade_date_str = [item.replace('-', '') for item in labels]
-        ax1.set_xticklabels(trade_date_str[::tick_step], rotation=30)
-    plt.show()
-
-
 def get_selected_factor(factor_lst=[]):
     factor_lst.remove('Exchange')
     factor_lst.remove('Instrument')
@@ -98,7 +84,8 @@ def train_model_reg(predict_windows=120,
     df_corr_lst = []
     _lin_reg_model = LinearRegression()
     _svr_model = SVR(C=1.0, epsilon=0.2)
-    _ev_model = ElasticNet(random_state=0)
+    _ev_model = ElasticNet(random_state=0, l1_ratio=0.5)
+    _rf_model = RandomForestRegressor(n_estimators=100, n_jobs=1, random_state=0)
     reg_model = _ev_model
     # pca = PCA(n_components=5, svd_solver='full')
     print('start train model 1')
@@ -242,6 +229,7 @@ def train_model_reg_intraday(predict_windows=120,
     _lin_reg_model = LinearRegression()
     _svr_model = SVR(C=1.0, epsilon=0.2)
     reg_model = _lin_reg_model
+
     # pca = PCA(n_components=5, svd_solver='full')
     print('start train model 1')
     final_df_factor = None
@@ -263,7 +251,7 @@ def train_model_reg_intraday(predict_windows=120,
         cols = list(df_factor.columns)
         # cols.remove('label_clf')
         cols.remove('UpdateTime')
-        cols.remove('label_reg')
+        # cols.remove('label_reg')
         df_corr = df_factor[cols].corr()
         # factor_lst.append(df_factor[cols])
         df_score = df_corr['label_cumsum'].abs()
@@ -302,8 +290,10 @@ def train_model_reg_intraday(predict_windows=120,
                 _corr_set.add(_v)
         logger.debug('corr average', _corr_set)
 
+    # scoring = ('r2', 'neg_mean_squared_error', 'mean_absolute_percentage_error')
+    print('train shape:{0}'.format(final_df_factor.shape))
     cv_results = cross_validate(reg_model, final_df_factor[top_feature_lst], final_df_factor['label_cumsum'], cv=3,
-                                n_jobs=3, scoring=('r2', 'neg_mean_squared_error'))
+                                n_jobs=3, scoring=('r2', 'neg_mean_absolute_percentage_error','neg_mean_squared_error'))
     print('train results:', cv_results)
     # print('intercept:', lin_reg_model.intercept_)
     # print('coef_:{0}\n'.format(list(zip(top_feature_lst, lin_reg_model.coef_))))
@@ -323,11 +313,7 @@ def train_model_reg_intraday(predict_windows=120,
     ret_str = 'rmse:{0}, r2:{1}, date:{2},predict windows:{3}, lag windows:{4}, instrument_id:{5}\n'.format(
         np.sqrt(metrics.mean_squared_error(df_factor['label_cumsum'], y_pred)),
         metrics.r2_score(df_factor['label_cumsum'], y_pred), test_dates[1], predict_windows, lag_windows, instrument_id)
-    r_ret = [item - y_pred[idx] for idx, item in enumerate(list(df_factor['label_cumsum']))]
-    # plt.plot(y_pred)
-    # plt.plot(df_factor['label_cumsum'])
-    # plt.plot(r_ret)
-    # plt.show()
+
     _summary_path = utils.get_path([define.RESULT_DIR, define.TICK_MODEL_DIR,
                                     'summary.txt'])
     _evalute_path = utils.get_path([define.RESULT_DIR, define.TICK_MODEL_DIR,
