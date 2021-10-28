@@ -17,7 +17,6 @@ import time
 import gc
 import os
 
-
 logging.basicConfig(filename='logs/{0}.txt'.format(os.path.split(__file__)[-1].split('.')[0]), level=logging.DEBUG)
 logger = logging.getLogger()
 
@@ -37,20 +36,20 @@ def train_models(start_date: str = '20210701', end_date: str = '20210730', produ
     num_date = len(trade_dates)
     idx = 0
     # [20, 60, 120, 600, 1200]
-    predict_window_lst = [20]  # 10s, 30s,1min,5min,10min-- 10s
-    lag_window_lst = [120]  # 10s, 30s,1min,5min,
-    for predict_win in predict_window_lst:
-        for lag_win in lag_window_lst:
-            logger.info('train for predict windows:{0} and lag_windows:{1}-----------'.format(predict_win, lag_win))
-            while idx < num_date - train_days:
-                train_model_reg_intraday(predict_windows=predict_win,
-                                         lag_windows=lag_win,
-                                         top_k_features=20,
-                                         start_date=trade_dates[idx],
-                                         end_date=trade_dates[idx + train_days],
-                                         train_days=train_days, product_id=product_id.upper())
-                idx += 1
-                gc.collect()
+    predict_window_lst = [20, 60]  # 10s, 30s,1min,5min,10min-- 10s
+    lag_window_lst = [20, 60]  # 10s, 30s,1min,5min,
+
+    logger.info(
+        'train for predict windows:{0} and lag_windows:{1}-----------'.format(predict_window_lst, lag_window_lst))
+    while idx < num_date - train_days:
+        train_model_reg_without_feature_preselect(predict_windows=predict_window_lst,
+                                                  lag_windows=lag_window_lst,
+                                                  top_k_features=20,
+                                                  start_date=trade_dates[idx],
+                                                  end_date=trade_dates[idx + train_days],
+                                                  train_days=train_days, product_id=product_id.upper())
+        idx += 1
+        gc.collect()
 
 
 def backtest(start_date: str = '20210707', end_date: str = '20210709', product_id: str = 'rb'):
@@ -97,4 +96,4 @@ def backtest(start_date: str = '20210707', end_date: str = '20210709', product_i
 
 if __name__ == "__main__":
     train_models(start_date='20210701', end_date='20210730', product_id='rb')
-    # backtest(start_date='20210707', end_date='20210715', product_id='hc')
+    # backtest(start_date='20210707', end_date='20210715', product_id='rb')

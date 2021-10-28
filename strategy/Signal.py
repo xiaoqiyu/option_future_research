@@ -14,5 +14,6 @@ class Signal(object):
         self.position = position
 
     @abc.abstractmethod
-    def get_signal(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs):
         pass
+

@@ -34,27 +34,30 @@ tb_cols = ["Exchange", "InstrumentID", "UpdateTime", "LastPrice", "OpenInterest"
            "BidVolume1",
            "AskVolume1"]
 
-skip_raw_cols = ['Exchange', 'InstrumentID', 'LastPrice', 'OpenInterest', 'InterestDiff',
-                 'Turnover', 'Volume', 'OpenVolume', 'CloseVolume', 'TransactionType', 'Direction',
-                 'BidPrice1', 'AskPrice1', 'BidVolume1', 'AskVolume1', 'vwap', 'vol_short', 'vol_long',
-                 'turnover_short', 'turnover_long', 'vwap_short', 'vwap_long', 'bs_vol', 'bs_vol_long',
-                 'bs_vol_short', 'bs_vol_diff', 'bs_tag', 'wap',
-                 'trenddiff', 'trend_long', 'dif', 'dea', 'turnover_ls_ratio',
-                 'vwap_ls_ratio', 'aoi', 'oi']
+# skip_raw_cols = ['Exchange', 'InstrumentID', 'LastPrice', 'OpenInterest', 'InterestDiff',
+#                  'Turnover', 'Volume', 'OpenVolume', 'CloseVolume', 'TransactionType', 'Direction',
+#                  'BidPrice1', 'AskPrice1', 'BidVolume1', 'AskVolume1', 'vwap', 'vol_short', 'vol_long',
+#                  'turnover_short', 'turnover_long', 'vwap_short', 'vwap_long', 'bs_vol', 'bs_vol_long',
+#                  'bs_vol_short', 'bs_vol_diff', 'bs_tag', 'wap',
+#                  'trenddiff', 'trend_long', 'dif', 'dea', 'turnover_ls_ratio',
+#                  'vwap_ls_ratio', 'aoi', 'oi']
 # remove from VIF, to be added with other calculation
 
 
-skip_raw_cols_normalized = ['Exchange', 'InstrumentID', 'OpenInterest', 'InterestDiff',
-                            'Turnover', 'Volume', 'OpenVolume', 'CloseVolume', 'TransactionType', 'Direction',
-                            'BidPrice1', 'AskPrice1', 'BidVolume1', 'AskVolume1', 'vwap', 'vol_short', 'vol_long',
-                            'turnover_short', 'turnover_long', 'vwap_short', 'vwap_long', 'bs_vol', 'bs_vol_long',
-                            'bs_vol_short', 'bs_vol_diff', 'bs_tag']
+skip_raw_cols = ['Exchange', 'InstrumentID']
+
+# skip_raw_cols_normalized = ['Exchange', 'InstrumentID', 'OpenInterest', 'InterestDiff',
+#                             'Turnover', 'Volume', 'OpenVolume', 'CloseVolume', 'TransactionType', 'Direction',
+#                             'BidPrice1', 'AskPrice1', 'BidVolume1', 'AskVolume1', 'vwap', 'vol_short', 'vol_long',
+#                             'turnover_short', 'turnover_long', 'vwap_short', 'vwap_long', 'bs_vol', 'bs_vol_long',
+#                             'bs_vol_short', 'bs_vol_diff', 'bs_tag']
+
+skip_raw_cols_normalized = ['Exchange', 'InstrumentID', 'UpdateTime', 'TransactionType', 'Direction', 'BidPrice1',
+                            'AskPrice', 'bs_tag']
 
 # normalized_cols = [('LastPrice', 'LastPrice'), ('wap', 'LastPrice'), ('OpenInterest', 'OpenInterest'),
 #                    ('vwap', 'LastPrice'), ('Volume', 'Volume'), ('BidPrice1', 'LastPrice'), ('AskPrice1', 'LastPrice')]
 
-normalized_cols = [('wap', 'LastPrice')]
-# normalized_cols = []
 
 BASE_DIR = 'option_future_research'
 RESULT_DIR = 'results'
@@ -71,3 +74,11 @@ daily_cache_name = 'cache/future_20210101_20210804.csv'
 MKT_MISSING_SKIP = 0.3
 
 exchange_map = {'XZCE': 'zc', 'XSGE': 'sc', 'XSIE': 'ine', 'XDCE': 'dc'}
+
+normalized_vals = {'LastPrice': 0, 'Volume': 0, 'OpenInterest': 0}
+# normalized_refs = [('wap', 'LastPrice')]
+normalized_refs = [('LastPrice', 'LastPrice'), ('OpenInterest', 'OpenInterest'), ('InterestDiff', 'Volume'),
+                   ('Turnover', 'Turnover'), ('Volume', 'Volume'), ('OpenVolume', 'Volume'), ('CloseVolume', 'Volume'),
+                   ('BidVolume1', 'Volume'), ('AskVolume1', 'Volume'), ('vwap', 'LastPrice'), ('wap', 'LastPrice'),
+                   ('bs_tag', 'Volume'),
+                   ('volume_ls_diff', 'Volume'), ('turnover_ls_diff', 'Turnover')]

@@ -106,6 +106,7 @@ def get_mul_num(instrument_id=''):
     df = get_contract(instrument_id=instrument_id)
     return df['contMultNum'].values[0]
 
+
 def write_json_file(file_path='', data=None):
     if not data:
         return
@@ -119,17 +120,20 @@ def load_json_file(filepath=''):
         contents = infile.read()
         return json.loads(contents)
 
+
 def get_trade_dates(start_date='20110920', end_date='20210921'):
     df = DataAPI.TradeCalGet(exchangeCD=u"XSHG,XSHE", beginDate=start_date, endDate=end_date, isOpen=u"1", field=u"",
                              pandas="1")
     df = df[df.isOpen == 1]
     return df
 
+
 def _is_trading_time(time_str=''):
     if time_str > '09:00:00.000' and time_str <= '15:00:00.000' or time_str > '21:00:00.000' and time_str < '23:00:01.000':
         return True
     else:
         return False
+
 
 if __name__ == "__main__":
     start_ts = time.time()

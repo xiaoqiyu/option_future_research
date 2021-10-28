@@ -32,7 +32,11 @@ def _normalized_by_base(x: list, normalized_dict: dict, key: str) -> list:
     if not _normalized_base:
         return x
     else:
-        return [item / _normalized_base for item in x]
+        try:
+            return [float(item) / _normalized_base for item in x]
+        except Exception as ex:
+            print('error for norm cal for col:{0} with error:{1}'.format(key, ex))
+            return x
 
 
 def _cal_turning_item(x: list) -> tuple:
@@ -114,6 +118,37 @@ def cal_cos(x: list, turn_idx: list, turn_val: list) -> list:
     return ret
 
 
+def cal_oir(bid_price: list, bid_vol: list, ask_price: list, ask_vol: list, n_rows: int) -> tuple:
+    """
+    calculate order imbalance factors
+    :param bid_price:
+    :param bid_vol:
+    :param ask_price:
+    :param ask_vol:
+    :param n_rows:
+    :return:
+    """
+    v_b = [0]
+    v_a = [0]
+
+    for i in range(1, n_rows):
+        v_b.append(
+            0 if bid_price[i] < bid_price[i - 1] else bid_vol[i] - bid_vol[i - 1] if bid_price[i] == bid_price[
+                i - 1] else bid_vol[i])
+
+        v_a.append(
+            0 if ask_price[i] < ask_price[i - 1] else ask_vol[i] - ask_vol[i - 1] if ask_price[i] == ask_price[
+                i - 1] else ask_vol[i])
+    lst_oi = []
+    lst_oir = []
+    lst_aoi = []
+    for idx, item in enumerate(v_a):
+        lst_oi.append(v_b[idx] - item)
+        lst_oir.append((v_b[idx] - item) / (v_b[idx] + item) if v_b[idx] + item != 0 else 0.0)
+        lst_aoi.append((v_b[idx] - item) / (ask_price[idx] - bid_price[idx]))
+    return lst_oi, lst_oir, lst_aoi
+
+
 def plot_factor(x=[], y=[], labels=[], tick_step=120):
     fig = plt.figure()
     ax1 = fig.add_subplot(111)
@@ -131,12 +166,8 @@ def plot_factor(x=[], y=[], labels=[], tick_step=120):
     plt.show()
 
 
-
-
-
-def get_factor(trade_date: str = "20210701", predict_windows: int = 1200, lag_long: int = 600,
-               lag_short: int = 10, instrument_id: str = '', exchange_cd: str = '',
-               normalized: dict = {'LastPrice': 0, 'Volume': 0, 'OpenInterest': 0}) -> pd.DataFrame:
+def get_factor(trade_date: str = "20210701", predict_windows: list = [1200], lag_windows: list = [10, 600],
+               instrument_id: str = '', exchange_cd: str = '') -> pd.DataFrame:
     """
 
     :param trade_date:
@@ -147,7 +178,6 @@ def get_factor(trade_date: str = "20210701", predict_windows: int = 1200, lag_lo
     :param stop_loss:
     :param instrument_id:
     :param exchange_cd:
-    :param normalized:
     :return:
     """
     _mul_num = utils.get_mul_num(instrument_id) or 1
@@ -162,17 +192,15 @@ def get_factor(trade_date: str = "20210701", predict_windows: int = 1200, lag_lo
 
     # for price/volume, if not define the normorlized base or defined as 0, we will ret it as the first tick
     open_dict = tick_mkt.head(1).to_dict('record')[0]
-    for k, v in normalized.items():
-        if not v:
-            normalized.update({k: (open_dict.get(k) or 1.0)})
 
     tick_mkt['vwap'] = (tick_mkt['Turnover'] / tick_mkt['Volume']) / _mul_num
     tick_mkt['wap'] = (tick_mkt['BidPrice1'] * tick_mkt['AskVolume1'] + tick_mkt['AskPrice1'] * tick_mkt[
         'BidVolume1']) / (tick_mkt['AskVolume1'] + tick_mkt['BidVolume1'])
-    tick_mkt['log_return'] = tick_mkt['LastPrice'].rolling(2).apply(lambda x: math.log(list(x)[-1] / list(x)[0]))
+    # tick_mkt['log_return'] = tick_mkt['LastPrice'].rolling(2).apply(lambda x: math.log(list(x)[-1] / list(x)[0]))
+    tick_mkt['log_return'] = np.log(tick_mkt['LastPrice']).diff()
+
     # tick_mkt['log_return'] = tick_mkt['wap'].rolling(2).apply(lambda x: math.log(list(x)[-1] / list(x)[0]))
-    tick_mkt['log_return_short'] = tick_mkt['log_return'].rolling(lag_short).sum()
-    tick_mkt['log_return_long'] = tick_mkt['log_return'].rolling(lag_long).sum()
+
     # tick_mkt['label_reg'] = tick_mkt['log_return'].rolling(predict_windows).sum().shift(1 - predict_windows)
     # lst_ret_max = list(tick_mkt['label_reg'].rolling(predict_windows).max())
     # lst_ret_min = list(tick_mkt['label_reg'].rolling(predict_windows).min())
@@ -184,131 +212,135 @@ def get_factor(trade_date: str = "20210701", predict_windows: int = 1200, lag_lo
     sum_min = []
 
     _x, _y = tick_mkt.shape
-    label_cumsum = []
-
-    for idx in range(_x):
-        _cum_sum = tick_mkt['log_return'][idx:idx + predict_windows].cumsum()  # idx+1, 避免未来数据
-        label_cumsum.append(list(_cum_sum)[-1])
-        # label_cumsum.append(_cum_sum.max())
-        # label_cumsum.append(_cum_sum.mean())
-
-        sum_max.append(_cum_sum.max())
-        sum_min.append(_cum_sum.min())
-
-    tick_mkt['label_cumsum'] = label_cumsum
-    # uncomment this if for clf models
-    # tick_mkt['label_clf'] = [
-    #     1 if item > math.log(1 + stop_profit) else 2 if sum_min[idx] < math.log(1 - stop_profit) else 0 for
-    #     idx, item in enumerate(sum_max)]
-    #
-    # num_class1 = tick_mkt[tick_mkt.label_clf == 1].shape[0]
-    # num_class2 = tick_mkt[tick_mkt.label_clf == 2].shape[0]
-    # print('label num for 0, 1, 2 is:', _x - num_class1 - num_class2, num_class1, num_class2)
     _diff = list(tick_mkt['InterestDiff'])
     _vol = list(tick_mkt['Volume'])
 
-    # factor calculate
     open_close_ratio = []
     for idx, item in enumerate(_diff):
         try:
             open_close_ratio.append(item / (_vol[idx] - item))
         except Exception as ex:
             open_close_ratio.append(open_close_ratio[-1])
-            # print(idx, item, _vol[idx], ex)
-    tick_mkt['open_close_ratio'] = open_close_ratio
-    tick_mkt['price_spread'] = (tick_mkt['BidPrice1'] - tick_mkt['AskPrice1']) / (
-                tick_mkt['BidPrice1'] + tick_mkt['AskPrice1'] / 2)
-    tick_mkt['buy_sell_spread'] = abs(tick_mkt['BidPrice1'] - tick_mkt['AskPrice1'])
-    lst_bid_price = list(tick_mkt['BidPrice1'])
-    lst_bid_vol = list(tick_mkt['BidVolume1'])
-    lst_ask_price = list(tick_mkt['AskPrice1'])
-    lst_ask_vol = list(tick_mkt['AskVolume1'])
 
-    v_b = [0]
-    v_a = [0]
+    # cal ori factor(paper factor)
+    lst_oi, lst_oir, lst_aoi = cal_oir(list(tick_mkt['BidPrice1']), list(tick_mkt['BidVolume1']),
+                                       list(tick_mkt['AskPrice1']), list(tick_mkt['AskVolume1']), n_rows=_x)
 
-    for i in range(1, _x):
-        v_b.append(
-            0 if lst_bid_price[i] < lst_bid_price[i - 1] else lst_bid_vol[i] - lst_bid_vol[i - 1] if lst_bid_price[i] ==
-                                                                                                     lst_bid_price[
-                                                                                                         i - 1] else
-            lst_bid_vol[i])
-
-        v_a.append(
-            0 if lst_ask_price[i] < lst_ask_price[i - 1] else lst_ask_vol[i] - lst_ask_vol[i - 1] if lst_ask_price[i] ==
-                                                                                                     lst_ask_price[
-                                                                                                         i - 1] else
-            lst_ask_vol[i])
-    lst_oi = []
-    lst_oir = []
-    lst_aoi = []
-    for idx, item in enumerate(v_a):
-        lst_oi.append(v_b[idx] - item)
-        lst_oir.append((v_b[idx] - item) / (v_b[idx] + item) if v_b[idx] + item != 0 else 0.0)
-        lst_aoi.append((v_b[idx] - item) / (lst_ask_price[idx] - lst_bid_price[idx]))
-    tick_mkt['oi'] = lst_oi
-    tick_mkt['oir'] = lst_oir
-    tick_mkt['aoi'] = lst_aoi
-
+    # cal cos factor(market factor)
     _lst_last_price = list(tick_mkt['LastPrice'])
     _lst_turn_idx, _lst_turn_val = cal_turning(_lst_last_price)
     _lst_slope = cal_slope(_lst_last_price, _lst_turn_idx, _lst_turn_val)
     _lst_cos = cal_cos(_lst_last_price, _lst_turn_idx, _lst_turn_val)
 
-    # plot_factor(_lst_turn_val[1:], _lst_last_price[1:])
-    # plot_factor(_lst_cos[1:100], list(tick_mkt['log_return'][1:100])[1:])
+    dif, dea, macd = ta.MACD(tick_mkt['LastPrice'], fastperiod=12, slowperiod=26, signalperiod=9)
 
+    tick_mkt['open_close_ratio'] = open_close_ratio
+    tick_mkt['price_spread'] = (tick_mkt['BidPrice1'] - tick_mkt['AskPrice1']) / (
+            tick_mkt['BidPrice1'] + tick_mkt['AskPrice1'] / 2)
+    tick_mkt['buy_sell_spread'] = abs(tick_mkt['BidPrice1'] - tick_mkt['AskPrice1'])
+    tick_mkt['oi'] = lst_oi
+    tick_mkt['oir'] = lst_oir
+    tick_mkt['aoi'] = lst_aoi
     tick_mkt['slope'] = _lst_slope
     tick_mkt['cos'] = _lst_cos
-
-    tick_mkt['trend_short'] = tick_mkt['LastPrice'].rolling(lag_short).apply(
-        lambda x: (list(x)[-1] - list(x)[0]) / lag_short)
-    tick_mkt['trend_long'] = tick_mkt['LastPrice'].rolling(lag_long).apply(
-        lambda x: (list(x)[-1] - list(x)[0]) / lag_long)
-    tick_mkt['trenddiff'] = tick_mkt['trend_short'] - tick_mkt['trend_long']
-    # TODO check calculation of trend_ls_ratio, comment first, update later
-    tick_mkt['trend_ls_ratio'] = tick_mkt['trend_short'] / tick_mkt['trend_long']
-    # for idx, item in enumerate(list(tick_mkt['trend_ls_ratio'])):
-    #     if item == np.inf or item == -np.inf:
-    #         print(idx, item)
-
-    tick_mkt['vol_short'] = tick_mkt['Volume'].rolling(lag_short).sum()
-    tick_mkt['vol_long'] = tick_mkt['Volume'].rolling(lag_long).sum()
-    tick_mkt['vol_ls_ratio'] = tick_mkt['vol_short'] / tick_mkt['vol_long']
-    tick_mkt['turnover_short'] = tick_mkt['Turnover'].rolling(lag_short).sum()
-    tick_mkt['turnover_long'] = tick_mkt['Turnover'].rolling(lag_long).sum()
-    tick_mkt['turnover_ls_ratio'] = tick_mkt['turnover_short'] / tick_mkt['turnover_long']
-    tick_mkt['vwap_short'] = tick_mkt['turnover_short'] / tick_mkt['vol_short']
-    tick_mkt['vwap_long'] = tick_mkt['turnover_long'] / tick_mkt['vol_long']
-    tick_mkt['vwap_ls_ratio'] = tick_mkt['vwap_short'] / tick_mkt['vwap_long']
-    dif, dea, macd = ta.MACD(tick_mkt['LastPrice'], fastperiod=12, slowperiod=26, signalperiod=9)
     tick_mkt['macd'] = macd
     tick_mkt['dif'] = dif
     tick_mkt['dea'] = dea
     tick_mkt['bs_tag'] = tick_mkt['LastPrice'].rolling(2).apply(lambda x: 1 if list(x)[-1] > list(x)[0] else -1)
     tick_mkt['bs_vol'] = tick_mkt['bs_tag'] * tick_mkt['Volume']
-    tick_mkt['bs_vol_long'] = tick_mkt['bs_vol'].rolling(lag_long).sum()
-    tick_mkt['bs_vol_short'] = tick_mkt['bs_vol'].rolling(lag_short).sum()
-    tick_mkt['bs_vol_diff'] = tick_mkt['bs_vol_short'] - tick_mkt['bs_vol_long']
-    tick_mkt['bs_vol_ls_ratio'] = tick_mkt['bs_vol_short'] / tick_mkt['bs_vol_long']
-    tick_mkt['bs2vol_ratio_short'] = tick_mkt['bs_vol_short'] / tick_mkt['vol_short']
-    tick_mkt['bs2vol_ratio_long'] = tick_mkt['bs_vol_long'] / tick_mkt['vol_long']
-    tick_mkt['bs2vol_ls_ratio'] = tick_mkt['bs2vol_ratio_short'] / tick_mkt['bs2vol_ratio_long']
 
-    for _base_col, _ref_col in define.normalized_cols:
+    # agg by windows,agg_dict={factor_name:(executor, new_factor_name)}, if None for new_factor_name, then use the
+    # raw name by default
+    windows_agg_dict = {
+        'LastPrice': (lambda x: (list(x)[-1] - list(x)[0]) / len(x), 'trend'),
+        'Volume': (np.sum, 'volume'),
+        'Turnover': (np.sum, 'turnover'),
+        'bs_vol': (np.sum, None),
+        'log_return': (np.sum, None)
+    }
+    for idx, _lag in enumerate(lag_windows):
+        for key, val in windows_agg_dict.items():
+            _func, rename = val
+            factor_name = rename or key
+            tick_mkt['{0}_{1}'.format(factor_name, idx)] = list(tick_mkt[key].rolling(_lag).apply(_func))
+
+        tick_mkt['bsvol_volume_{0}'.format(idx)] = tick_mkt['bs_vol_{0}'.format(idx)] / tick_mkt[
+            'volume_{0}'.format(idx)]
+
+    for idx, _pred in enumerate(predict_windows):
+        tick_mkt['label_{0}'.format(idx)] = tick_mkt['log_return'].rolling(_pred).sum().shift(1 - _pred)
+        tick_mkt['rv_{0}'.format(idx)] = tick_mkt['log_return'].rolling(_pred).apply(realized_volatility).shift(
+            1 - _pred)
+
+    # tick_mkt['log_return_short'] = tick_mkt['log_return'].rolling(lag_short).sum()
+    # tick_mkt['log_return_long'] = tick_mkt['log_return'].rolling(lag_long).sum()
+    # tick_mkt['trend_short'] = tick_mkt['LastPrice'].rolling(lag_short).apply(
+    #     lambda x: (list(x)[-1] - list(x)[0]) / lag_short)
+    # tick_mkt['trend_long'] = tick_mkt['LastPrice'].rolling(lag_long).apply(
+    #     lambda x: (list(x)[-1] - list(x)[0]) / lag_long)
+    # tick_mkt['vol_short'] = tick_mkt['Volume'].rolling(lag_short).sum()
+    # tick_mkt['vol_long'] = tick_mkt['Volume'].rolling(lag_long).sum()
+    # tick_mkt['turnover_short'] = tick_mkt['Turnover'].rolling(lag_short).sum()
+    # tick_mkt['turnover_long'] = tick_mkt['Turnover'].rolling(lag_long).sum()
+    # tick_mkt['bs_vol_long'] = tick_mkt['bs_vol'].rolling(lag_long).sum()
+    # tick_mkt['bs_vol_short'] = tick_mkt['bs_vol'].rolling(lag_short).sum()
+
+    # agg by factor,remove vwap
+    factor_agg_dict = {'trend': ['minus', 'divide'], 'volume': ['minus', 'divide'], 'turnover': ['minus', 'divide'],
+                       'bs_vol': ['minus', 'divide'], 'bsvol_volume': ['divide']}
+    lag_win_size = len(lag_windows)
+    if lag_win_size >= 2:
+        for key, val in factor_agg_dict.items():
+            for _func_name in val:
+                if _func_name == 'minus':
+                    tick_mkt['{0}_ls_diff'.format(key)] = tick_mkt['{0}_{1}'.format(key, 0)] - tick_mkt[
+                        '{0}_{1}'.format(key, lag_win_size - 1)]
+                if _func_name == 'divide':
+                    tick_mkt['{0}_ls_ratio'.format(key)] = tick_mkt['{0}_{1}'.format(key, 0)] / tick_mkt[
+                        '{0}_{1}'.format(key, lag_win_size - 1)]
+
+    # tick_mkt['trenddiff'] = tick_mkt['trend_short'] - tick_mkt['trend_long']
+    # tick_mkt['trend_ls_ratio'] = tick_mkt['trend_short'] / tick_mkt['trend_long']
+    # tick_mkt['vol_ls_ratio'] = tick_mkt['vol_short'] / tick_mkt['vol_long']
+    # tick_mkt['turnover_ls_ratio'] = tick_mkt['turnover_short'] / tick_mkt['turnover_long']
+    # tick_mkt['vwap_short'] = tick_mkt['turnover_short'] / tick_mkt['vol_short']
+    # tick_mkt['vwap_long'] = tick_mkt['turnover_long'] / tick_mkt['vol_long']
+    # tick_mkt['vwap_ls_ratio'] = tick_mkt['vwap_short'] / tick_mkt['vwap_long']
+    # tick_mkt['bs_vol_diff'] = tick_mkt['bs_vol_short'] - tick_mkt['bs_vol_long']
+    # tick_mkt['bs_vol_ls_ratio'] = tick_mkt['bs_vol_short'] / tick_mkt['bs_vol_long']
+
+    # TODO ADD norm factor
+    # norm factor processing, calculate the norm here or in model processing. norm with the value of the current date
+    # or summary of the prev date
+    normalized = define.normalized_vals
+    # TODO open_dict is the open value of the current date, this could be normalized by other ref,e.g. the prev date
+    for k, v in normalized.items():
+        if not v:
+            normalized.update({k: (open_dict.get(k) or 1.0)})
+    for _base_col, _ref_col in define.normalized_refs:
         _arr = _normalized_by_base(tick_mkt[_base_col], normalized, _ref_col)
         tick_mkt['norm_{0}'.format(_base_col)] = _arr
+
     _factor_lst = list(tick_mkt.columns)
-    logger.info(_factor_lst)
+    print(_factor_lst)
 
     for col in define.skip_raw_cols:
         try:
             _factor_lst.remove(col)
         except Exception as ex:
-            logger.info('col:{0} not exist with error:{1}'.format(col, ex))
+            print('col:{0} not exist with error:{1}'.format(col, ex))
+
+    # FIXME replace this with better solution
+    for idx, _lag in enumerate(lag_windows):
+        _factor_lst.remove('volume_{0}'.format(idx))
+        _factor_lst.remove('turnover_{0}'.format(idx))
+        _factor_lst.remove('bs_vol_{0}'.format(idx))
+
+    # handle exception values
     tick_mkt = tick_mkt.replace(np.inf, np.nan)
     tick_mkt = tick_mkt.replace(-np.inf, np.nan)
     tick_mkt = tick_mkt.dropna()
-    # # FIXME  hardcode some features
-    # _factor_lst = ['macd', 'log_return', 'aoi', 'norm_wap', 'trenddiff', 'UpdateTime', 'slope', 'cos', 'label_cumsum']
+    _factor_path = utils.get_path([define.CACHE_DIR, define.FACTOR_DIR,
+                                   'factor_{0}_{1}.csv'.format(instrument_id, trade_date.replace('-', ''))])
+    tick_mkt[_factor_lst].to_csv(_factor_path, index=False)
     return tick_mkt[_factor_lst]

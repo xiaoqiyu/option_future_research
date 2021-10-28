@@ -15,9 +15,10 @@ class TOSignal(Signal):
     def __init__(self, factor, position):
         super().__init__(factor, position)
 
-    def get_signal(self, params={}):
+    def __call__(self, *args, **kwargs):
         assert isinstance(self.factor, Factor)
         assert isinstance(self.position, Position)
+        params = kwargs.get('params')
         volitility = float(params.get('volitility')) or 20.0
         k1 = float(params.get('k1')) or 1.0
         k2 = float(params.get('k2')) or 1.0

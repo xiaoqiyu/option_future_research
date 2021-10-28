@@ -136,7 +136,7 @@ def backtesting(product_id='m', trade_date='20210401', signal_name='RegSignal', 
         options.update({'trade_date': trade_date})
         # get signal
         s1 = time.time()
-        _signal = signal.get_signal(params=options)
+        _signal = signal(params=options)
         e1 = time.time()
         # print('get signal time is:', e1-s1)
         # print(idx, _update_time, _signal)

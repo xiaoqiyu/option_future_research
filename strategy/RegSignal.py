@@ -45,7 +45,7 @@ class RegSignal(Signal):
         _label_lst = sorted(list(self.df_prev['pred']))
         # self._ret_up = self.df_prev['label'].quantile(1 - 0.0001)
         # self._ret_down = self.df_prev['label'].quantile(0.002)
-        #TODO CHECK HARDCODE
+        # TODO CHECK HARDCODE
         self._ret_up = _label_lst[-50]
         self._ret_down = _label_lst[20]
         self._ret_up = 0.0005
@@ -53,10 +53,11 @@ class RegSignal(Signal):
         print('up ret:{0}, down ret:{1},up pred:{2}, down pred:{3}'.format(self._ret_up, _pred_lst[-50], self._ret_down,
                                                                            _pred_lst[50]))
 
-    def get_signal(self, params={}):
+    def __call__(self, *args, **kwargs):
         if not self.is_available:
             return define.NO_SIGNAL
 
+        params = kwargs.get('params')
         _k = params.get('tick')[2].split()[1].split('.')[0]
         _v = self.map_dict.get(_k) or 0.0
         _up_ratio = float(params.get('ret_up_ratio')) or 0.0015
