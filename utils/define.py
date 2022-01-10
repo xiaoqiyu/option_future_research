@@ -44,7 +44,7 @@ tb_cols = ["Exchange", "InstrumentID", "UpdateTime", "LastPrice", "OpenInterest"
 # remove from VIF, to be added with other calculation
 
 
-skip_raw_cols = ['Exchange', 'InstrumentID']
+# skip_raw_cols = ['Exchange', 'InstrumentID']
 
 # skip_raw_cols_normalized = ['Exchange', 'InstrumentID', 'OpenInterest', 'InterestDiff',
 #                             'Turnover', 'Volume', 'OpenVolume', 'CloseVolume', 'TransactionType', 'Direction',
@@ -52,8 +52,11 @@ skip_raw_cols = ['Exchange', 'InstrumentID']
 #                             'turnover_short', 'turnover_long', 'vwap_short', 'vwap_long', 'bs_vol', 'bs_vol_long',
 #                             'bs_vol_short', 'bs_vol_diff', 'bs_tag']
 
-skip_raw_cols_normalized = ['Exchange', 'InstrumentID', 'UpdateTime', 'TransactionType', 'Direction', 'BidPrice1',
-                            'AskPrice', 'bs_tag']
+skip_raw_cols = ['Exchange', 'InstrumentID',  'TransactionType', 'Direction', 'BidPrice1',
+                            'bs_tag',
+                 'LastPrice','InterestDiff','OpenInterest','Turnover','Volume','OpenVolume','CloseVolume','AskPrice1', #norm value
+                 'AskVolume1','BidVolume1','vwap','wap','volume_ls_diff','turnover_ls_diff','bs_vol_ls_diff','norm_turnover',#norm value
+                 'norm_openvolume','norm_closevolume','norm_turnover_ls_diff',] #norm value
 
 # normalized_cols = [('LastPrice', 'LastPrice'), ('wap', 'LastPrice'), ('OpenInterest', 'OpenInterest'),
 #                    ('vwap', 'LastPrice'), ('Volume', 'Volume'), ('BidPrice1', 'LastPrice'), ('AskPrice1', 'LastPrice')]
@@ -82,3 +85,5 @@ normalized_refs = [('LastPrice', 'LastPrice'), ('OpenInterest', 'OpenInterest'),
                    ('BidVolume1', 'Volume'), ('AskVolume1', 'Volume'), ('vwap', 'LastPrice'), ('wap', 'LastPrice'),
                    ('bs_tag', 'Volume'),
                    ('volume_ls_diff', 'Volume'), ('turnover_ls_diff', 'Turnover')]
+
+LABEL_NAME = 'label_0'

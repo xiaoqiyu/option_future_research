@@ -218,7 +218,9 @@ def train_model_reg_with_feature_preselect(predict_windows: list = [20],
     df_corr_lst = []
     _lin_reg_model = LinearRegression()
     _svr_model = SVR(C=1.0, epsilon=0.2)
-    reg_model = _lin_reg_model
+    _ev_model = ElasticNet(random_state=0, l1_ratio=0.5)
+    _rf_model = RandomForestRegressor(n_estimators=100, n_jobs=1, random_state=0)
+    reg_model = _ev_model
 
     # pca = PCA(n_components=5, svd_solver='full')
     print('start train model 1')
@@ -285,10 +287,10 @@ def train_model_reg_with_feature_preselect(predict_windows: list = [20],
                                 n_jobs=3,
                                 scoring=('r2', 'neg_mean_absolute_percentage_error', 'neg_mean_squared_error'))
     print('train results:', cv_results)
+
+    reg_model.fit(final_df_factor[top_feature_lst], final_df_factor[define.LABEL_NAME])
     # print('intercept:', lin_reg_model.intercept_)
     # print('coef_:{0}\n'.format(list(zip(top_feature_lst, lin_reg_model.coef_))))
-
-    reg_model.fit(final_df_factor[top_feature_lst], final_df_factor['label_cumsum'])
 
     print('test for trade date:', test_dates[1])
     df_factor = F.get_factor(trade_date=test_dates[1],
@@ -607,7 +609,7 @@ def train_model_reg_without_feature_preselect(predict_windows: list = [20],
     reg_model = _lin_reg_model
 
     # pca = PCA(n_components=5, svd_solver='full')
-    print('start train model 1')
+    print('start train model from date {0} to {1}'.format(start_date, end_date))
     final_df_factor = None
     factor_cnt = 0
     for instrument_id, date, exchange_cd in train_dates.values:
@@ -676,17 +678,20 @@ def train_model_reg_without_feature_preselect(predict_windows: list = [20],
                 _corr_set.add(_v)
         logger.debug('corr average', _corr_set)
 
-    # scoring = ('r2', 'neg_mean_squared_error', 'mean_absolute_percentage_error')
-    print('train shape:{0}'.format(final_df_factor.shape))
+
+    selected_cols = deepcopy(cols)
     for item in cols:
-        if item.startswith('label'):
-            cols.remove(item)
-    cv_results = cross_validate(reg_model, final_df_factor[cols], final_df_factor['label_1'], cv=3,
+        if item == 'rv_0':
+            pass
+        if item.startswith('label') or item.startswith('rv'):
+            selected_cols.remove(item)
+    print('train shape:{0}'.format(final_df_factor[selected_cols].shape))
+    cv_results = cross_validate(reg_model, final_df_factor[selected_cols], final_df_factor[define.LABEL_NAME], cv=3,
                                 n_jobs=3,
-                                scoring=('r2', 'neg_mean_absolute_percentage_error', 'neg_mean_squared_error'))
+                                scoring=('r2', 'neg_mean_squared_error'))
     print('train results:', cv_results)
 
-    reg_model.fit(final_df_factor[top_feature_lst], final_df_factor['label_cumsum'])
+    reg_model.fit(final_df_factor[selected_cols], final_df_factor[define.LABEL_NAME])
 
     print('test for trade date:', test_dates[1])
     df_factor = F.get_factor(trade_date=test_dates[1],
@@ -696,10 +701,11 @@ def train_model_reg_without_feature_preselect(predict_windows: list = [20],
                              exchange_cd=test_dates[2])
     _update_time = list(df_factor['UpdateTime'])
     # x_test = pca.transform(df_factor[top_feature_lst])
-    y_pred = reg_model.predict(df_factor[cols])
+    y_pred = reg_model.predict(df_factor[selected_cols])
     ret_str = 'rmse:{0}, r2:{1}, date:{2},predict windows:{3}, lag windows:{4}, instrument_id:{5}\n'.format(
-        np.sqrt(metrics.mean_squared_error(df_factor['label_1'], y_pred)),
-        metrics.r2_score(df_factor['label_1'], y_pred), test_dates[1], predict_windows, lag_windows, instrument_id)
+        np.sqrt(metrics.mean_squared_error(df_factor[define.LABEL_NAME], y_pred)),
+        metrics.r2_score(df_factor[define.LABEL_NAME], y_pred), test_dates[1], predict_windows, lag_windows,
+        instrument_id)
 
     _summary_path = utils.get_path([define.RESULT_DIR, define.TICK_MODEL_DIR,
                                     'summary.txt'])
@@ -710,15 +716,17 @@ def train_model_reg_without_feature_preselect(predict_windows: list = [20],
 
     _model_evaluate = utils.load_json_file(_evalute_path) or dict()
     _ret_lst = _model_evaluate.get('{0}_{1}'.format(instrument_id, test_dates[1].replace('-', ''))) or list()
-    _ret_lst.append([np.sqrt(metrics.mean_squared_error(df_factor['label_1'], y_pred)),
-                     metrics.r2_score(df_factor['label_1'], y_pred), test_dates[1], predict_windows,
+    _ret_lst.append([np.sqrt(metrics.mean_squared_error(df_factor[define.LABEL_NAME], y_pred)),
+                     metrics.r2_score(df_factor[define.LABEL_NAME], y_pred), test_dates[1], predict_windows,
                      lag_windows])
     _model_evaluate.update({'{0}_{1}'.format(instrument_id, test_dates[1].replace('-', '')): _ret_lst})
     utils.write_json_file(_evalute_path, _model_evaluate)
 
-    df_pred = pd.DataFrame({'UpdateTime': df_factor['UpdateTime'], 'pred': y_pred, 'label': df_factor['label_1']})
+    df_pred = pd.DataFrame(
+        {'UpdateTime': df_factor['UpdateTime'], 'pred': y_pred, 'label': df_factor[define.LABEL_NAME]})
     _file_name = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR, define.TICK_MODEL_DIR,
-                              'pred_{0}_{1}_{2}_{3}.csv'.format(instrument_id, test_dates[1].replace('-', ''),
-                                                                predict_windows, lag_windows))
+                              'pred_{0}_{1}_{2}_{3}_{4}.csv'.format(define.LABEL_NAME, instrument_id,
+                                                                    test_dates[1].replace('-', ''),
+                                                                    predict_windows, lag_windows))
     df_pred.to_csv(_file_name, index=False)
     del df_factor

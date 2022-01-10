@@ -319,7 +319,7 @@ def get_factor(trade_date: str = "20210701", predict_windows: list = [1200], lag
             normalized.update({k: (open_dict.get(k) or 1.0)})
     for _base_col, _ref_col in define.normalized_refs:
         _arr = _normalized_by_base(tick_mkt[_base_col], normalized, _ref_col)
-        tick_mkt['norm_{0}'.format(_base_col)] = _arr
+        tick_mkt['norm_{0}'.format(_base_col.lower())] = _arr
 
     _factor_lst = list(tick_mkt.columns)
     print(_factor_lst)
