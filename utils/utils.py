@@ -108,8 +108,8 @@ def get_mul_num(instrument_id=''):
 
 
 def write_json_file(file_path='', data=None):
-    if not data:
-        return
+    # if data == None:
+    #     return
     with open(file_path, 'w') as outfile:
         j_data = json.dumps(data)
         outfile.write(j_data)

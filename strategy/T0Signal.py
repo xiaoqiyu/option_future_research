@@ -14,6 +14,7 @@ from backtester.Position import Position
 class TOSignal(Signal):
     def __init__(self, factor, position):
         super().__init__(factor, position)
+        self.is_available = True
 
     def __call__(self, *args, **kwargs):
         assert isinstance(self.factor, Factor)

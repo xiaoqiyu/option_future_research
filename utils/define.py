@@ -13,6 +13,7 @@ SHORT_OPEN = 2
 SHORT_CLOSE = 3
 LONG = 4
 SHORT = 5
+STOP = 6
 PLT_START = 3
 PLT_END = -10
 TICK_SIZE = 41400
@@ -52,11 +53,15 @@ tb_cols = ["Exchange", "InstrumentID", "UpdateTime", "LastPrice", "OpenInterest"
 #                             'turnover_short', 'turnover_long', 'vwap_short', 'vwap_long', 'bs_vol', 'bs_vol_long',
 #                             'bs_vol_short', 'bs_vol_diff', 'bs_tag']
 
-skip_raw_cols = ['Exchange', 'InstrumentID',  'TransactionType', 'Direction', 'BidPrice1',
-                            'bs_tag',
-                 'LastPrice','InterestDiff','OpenInterest','Turnover','Volume','OpenVolume','CloseVolume','AskPrice1', #norm value
-                 'AskVolume1','BidVolume1','vwap','wap','volume_ls_diff','turnover_ls_diff','bs_vol_ls_diff','norm_turnover',#norm value
-                 'norm_openvolume','norm_closevolume','norm_turnover_ls_diff',] #norm value
+skip_raw_cols = ['Exchange', 'InstrumentID', 'TransactionType', 'Direction', 'BidPrice1',
+                 'bs_tag',
+                 'LastPrice', 'InterestDiff', 'OpenInterest', 'Turnover', 'Volume', 'OpenVolume', 'CloseVolume',
+                 'AskPrice1',
+                 # norm value
+                 'AskVolume1', 'BidVolume1', 'vwap', 'wap', 'volume_ls_diff', 'turnover_ls_diff', 'bs_vol_ls_diff',
+                 'norm_turnover',
+                 # norm value
+                 'norm_openvolume', 'norm_closevolume', 'norm_turnover_ls_diff', ]  # norm value
 
 # normalized_cols = [('LastPrice', 'LastPrice'), ('wap', 'LastPrice'), ('OpenInterest', 'OpenInterest'),
 #                    ('vwap', 'LastPrice'), ('Volume', 'Volume'), ('BidPrice1', 'LastPrice'), ('AskPrice1', 'LastPrice')]
@@ -79,11 +84,21 @@ MKT_MISSING_SKIP = 0.3
 exchange_map = {'XZCE': 'zc', 'XSGE': 'sc', 'XSIE': 'ine', 'XDCE': 'dc'}
 
 normalized_vals = {'LastPrice': 0, 'Volume': 0, 'OpenInterest': 0}
-# normalized_refs = [('wap', 'LastPrice')]
-normalized_refs = [('LastPrice', 'LastPrice'), ('OpenInterest', 'OpenInterest'), ('InterestDiff', 'Volume'),
-                   ('Turnover', 'Turnover'), ('Volume', 'Volume'), ('OpenVolume', 'Volume'), ('CloseVolume', 'Volume'),
-                   ('BidVolume1', 'Volume'), ('AskVolume1', 'Volume'), ('vwap', 'LastPrice'), ('wap', 'LastPrice'),
-                   ('bs_tag', 'Volume'),
-                   ('volume_ls_diff', 'Volume'), ('turnover_ls_diff', 'Turnover')]
+normalized_refs = [('wap', 'LastPrice')]
+# normalized_refs = [('LastPrice', 'LastPrice'), ('OpenInterest', 'OpenInterest'), ('InterestDiff', 'Volume'),
+#                    ('Turnover', 'Turnover'), ('Volume', 'Volume'), ('OpenVolume', 'Volume'), ('CloseVolume', 'Volume'),
+#                    ('BidVolume1', 'Volume'), ('AskVolume1', 'Volume'), ('vwap', 'LastPrice'), ('wap', 'LastPrice'),
+#                    ('bs_tag', 'Volume'),
+#                    ('volume_ls_diff', 'Volume'), ('turnover_ls_diff', 'Turnover')]
 
-LABEL_NAME = 'label_0'
+LABEL_NAME = 'label_1'
+
+# train_cols = ['open_close_ratio', 'oi', 'oir', 'aoi', 'slope', 'cos', 'macd', 'dif', 'dea', 'bsvol_volume_0',
+#                 'trend_1', 'bsvol_volume_1',
+#                 'trend_ls_diff', 'trend_ls_ratio', 'volume_ls_ratio', 'turnover_ls_ratio', 'bs_vol_ls_ratio',
+#                 'bsvol_volume_ls_ratio']
+
+# train_cols = ['slope']
+# train_cols = ['cos', 'macd', 'dif', 'dea', 'trend_0', 'log_return_0', 'bsvol_volume_0', 'trend_1', 'log_return_1',
+#               'bsvol_volume_1', 'trend_ls_ratio', 'volume_ls_ratio', 'turnover_ls_ratio']
+train_cols = ['cos', 'trend_ls_ratio']

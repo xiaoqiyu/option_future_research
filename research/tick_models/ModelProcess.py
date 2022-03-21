@@ -419,97 +419,185 @@ def train_model_sta(predict_windows: list = [20],
             logger.info('train error with error msg:{0}'.format(ex))
 
 
+def _resample(df_factor):
+    from random import sample
+    df0 = df_factor[df_factor.label_clf_1 == 0]
+    df1 = df_factor[df_factor.label_clf_1 == 1]
+    df2 = df_factor[df_factor.label_clf_1 == 2]
+    df3 = df_factor[df_factor.label_clf_1 == -1]
+    df4 = df_factor[df_factor.label_clf_1 == -2]
+    num0 = df0.shape[0]
+    sample_0 = sample(list(range(num0)), int(num0 * 0.2))
+    df1 = df1.append(df0.iloc[sample_0])
+    df1 = df1.append(df2)
+    df1 = df1.append(df3)
+    df1 = df1.append(df4)
+    return df1
+
+
 def train_model_clf(predict_windows: list = [20],
                     lag_windows: list = [60],
                     start_date: str = '',
                     end_date: str = '',
                     top_k_features: int = 1,
-                    train_days: int = 3):
+                    train_days: int = 3,
+                    product_id: str = 'RB'):
     df = DataAPI.MktFutdGet(endDate=end_date, beginDate=start_date, pandas="1")
     df = df[df.mainCon == 1]
-    df = df[df.contractObject == 'RB'][['ticker', 'tradeDate']]
+    df = df[df.contractObject == product_id][['ticker', 'tradeDate', 'exchangeCD']]
     train_dates = df.iloc[-train_days:-1, :]
     test_dates = df.iloc[-1, :]
     model1 = SelectKBest(mutual_info_classif, k=top_k_features)
-    model2 = LogisticRegression()
+
+    import pickle
+
+    _model_name = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR,
+                               define.TICK_MODEL_DIR,
+                               'clfmodel_{0}.pkl'.format(product_id))
+
+    try:
+        # Load from file
+        with open(_model_name, 'rb') as file:
+            model2 = pickle.load(file)
+            print('model loaded====>', model2.coef_, model2.intercept_, model2.classes_)
+    except Exception as ex:
+        print('load model:{0} fail with error:{1}'.format(_model_name, ex))
+        model2 = LogisticRegression(class_weight='balanced')
+
     acc_scores = {}
     factor_lst = []
     cnt = 0
-    for instrument_id, date in train_dates.values:
-        logger.info("train for trade date with date:{0}", date)
+    related_factors = []
+    for instrument_id, date, exchange_cd in train_dates.values:
+        print("train for trade date with date:{0}", date)
         df_factor = F.get_factor(trade_date=date,
                                  predict_windows=predict_windows,
                                  lag_windows=lag_windows,
-                                 instrument_id=instrument_id)
+                                 instrument_id=instrument_id,
+                                 exchange_cd=exchange_cd)
 
         cols = list(df_factor.columns)
-        cols.remove('label_clf')
-        cols.remove('UpdateTime')
-        model1.fit(df_factor[cols], df_factor['label_clf'])
-        factor_lst.append(df_factor)
-        logger.info("model selection scores for mutual information:{0}".format(list(zip(cols, model1.scores_))))
-        # acc_scores.append(list(model1.scores_))
-        cnt += 1
-        rank_score = rankdata(model1.scores_)
-        for idx, item in enumerate(rank_score):
+        # cols = ['open_close_ratio', 'oi', 'oir', 'aoi', 'slope', 'cos', 'macd', 'dif', 'dea', 'bsvol_volume_0',
+        #         'trend_1', 'bsvol_volume_1',
+        #         'trend_ls_diff', 'trend_ls_ratio', 'volume_ls_ratio', 'turnover_ls_ratio', 'bs_vol_ls_ratio',
+        #         'bsvol_volume_ls_ratio']
+        cols = define.train_cols
+        import copy
+        reg_cols = copy.deepcopy(define.train_cols)
+        reg_cols.append('label_1')
+        # reg_cols = ['open_close_ratio', 'oi', 'oir', 'aoi', 'slope', 'cos', 'macd', 'dif', 'dea', 'bsvol_volume_0',
+        #             'trend_1', 'bsvol_volume_1',
+        #             'trend_ls_diff', 'trend_ls_ratio', 'volume_ls_ratio', 'turnover_ls_ratio', 'bs_vol_ls_ratio',
+        #             'bsvol_volume_ls_ratio', 'label_1']
+
+        df_corr = df_factor[reg_cols].corr()
+        df_corr.to_csv('corr_{0}.csv'.format(date))
+        for item in reg_cols:
             try:
-                if cols[idx] not in acc_scores:
-                    # acc_scores[cols[idx]] = item * cnt / (train_days - 1)
-                    acc_scores[cols[idx]] = item
-                else:
-                    # acc_scores[cols[idx]] += item * cnt / (train_days - 1)
-                    acc_scores[cols[idx]] += item
+                _similar_factors = list(df_corr[df_corr[item] > 0.07][item].index)
+                for _k in _similar_factors:
+                    if not ((item, _k) in related_factors or (_k, item) in related_factors) and _k != item:
+                        related_factors.append((item, _k))
             except Exception as ex:
-                logger.info('id:{0}, error:{1}, col:{2}'.format(idx, ex, cols))
-        # print("model selection pvalues for mutual information:", model1.pvalues_)
+                print(ex, date)
+        factor_lst.append(df_factor)
+
+        # model1.fit(df_factor[cols], df_factor['label_clf_1'])
+
+        # logger.info("model selection scores for mutual information:{0}".format(list(zip(cols, model1.scores_))))
+        # cnt += 1
+        # rank_score = rankdata(model1.scores_)
+        # for idx, item in enumerate(rank_score):
+        #     try:
+        #         if cols[idx] not in acc_scores:
+        #             acc_scores[cols[idx]] = item
+        #         else:
+        #             acc_scores[cols[idx]] += item
+        #     except Exception as ex:
+        #         logger.info('id:{0}, error:{1}, col:{2}'.format(idx, ex, cols))
+
+    if top_k_features < 0:
+        acc_scores = dict(zip(cols, [0.1] * len(cols)))
+
+    for k1, k2 in related_factors:
+        if k1 in acc_scores and k2 in acc_scores:
+            print("{0}:{1} and {2}:{3} in dict, pop{4}".format(k1, acc_scores.get(k1), k2, acc_scores.get(k2), k2))
+            # acc_scores.pop(k2)  # TODO always pop k2, add more logic here if needed
+
+    top_k_features = len(acc_scores) if top_k_features < 0 else top_k_features
     sorted_scores = sorted(acc_scores.items(), reverse=True, key=lambda x: x[1])[-top_k_features:]
     sorted_features = [item[0] for item in sorted_scores]
     logger.info(sorted_scores)
+    print("sorted features:", sorted_features)
 
-    for df_factor in factor_lst:
-        model2.fit(df_factor[sorted_features], df_factor['label_clf'])
+    df_train = _resample(factor_lst[0])
+    for df_factor in factor_lst[1:]:
+        df_train = df_train.append(_resample(df_factor))
+    model2.fit(df_train[sorted_features], df_train['label_clf_1'])
+    _model_name = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR,
+                               define.TICK_MODEL_DIR,
+                               'clfmodel_{0}.pkl'.format(product_id))
+
+    with open(_model_name, 'wb') as file:
+        pickle.dump(model2, file)
+
+    del factor_lst
+
+    # for df_factor in factor_lst:
+    #     df_train = _resample(df_factor)
+    #     model2.fit(df_train[sorted_features], df_train['label_clf_1'])
     logger.info('test for trade date:{0}'.format(test_dates[1]))
 
-    df_factor = F.get_factor(trade_date=test_dates[1],
-                             predict_windows=predict_windows,
-                             lag_windows=lag_windows,
-                             instrument_id=test_dates[0])
+    df_test = F.get_factor(trade_date=test_dates[1],
+                           predict_windows=predict_windows,
+                           lag_windows=lag_windows,
+                           instrument_id=test_dates[0],
+                           exchange_cd=test_dates[2])
     # cols = list(df_factor.columns)
     # cols.remove('label_clf')
-    _update_time = list(df_factor['UpdateTime'])
-    _update_time_str = [item.split()[-1] for item in _update_time]
-    y_pred = model2.predict(df_factor[sorted_features])
-    y_pred = model2.predict(model1.transform(df_factor[cols]))
+
+    # y_pred = model2.predict(model1.transform(df_factor[cols])) #TODO why this??
     # if there might be class imbalance, then  micro is preferable since micro-average will aggregate the contributions
     # of all classes to compute the average metric, while macro-average will compute the metric independently for each
     # class and then take the average(hence treating all classes equally)
-    y_true = list(df_factor['label_clf'])
-    pred0 = len([item for item in y_pred if item == 0])
-    pred1 = len([item for item in y_pred if item == 1])
-    pred2 = len([item for item in y_pred if item == 2])
 
-    true0 = len([item for item in y_true if item == 0])
-    true1 = len([item for item in y_true if item == 1])
-    true2 = len([item for item in y_true if item == 2])
+    y_true = list(df_test['label_clf_1'])
+    y_pred = model2.predict(df_test[sorted_features])
+    _update_time = list(df_test['UpdateTime'])
+    _update_time_str = [item.split()[-1] for item in _update_time]
 
-    num_prec0 = len([item for idx, item in enumerate(y_pred) if y_true[idx] == 0 and item == 0])
-    num_prec1 = len([item for idx, item in enumerate(y_pred) if y_true[idx] == 1 and item == 1])
-    num_prec2 = len([item for idx, item in enumerate(y_pred) if y_true[idx] == 2 and item == 2])
+    dict_score = {}
 
-    logger.info('true vs pred:', '(0,{},{},{})'.format(true0, pred0, num_prec0 / pred0 if pred0 > 0 else 0))
-    logger.info('true vs pred:', '(1,{},{},{})'.format(true1, pred1, num_prec1 / pred1 if pred1 > 0 else 0))
-    logger.info('true vs pred:', '(2,{},{},{})'.format(true2, pred2, num_prec2 / pred2 if pred2 > 0 else 0))
+    for _clf_label in model2.classes_:
+        _pred = len([item for item in y_pred if item == _clf_label])
+        _true = len([item for item in y_true if item == _clf_label])
+        _num_prec = len([item for idx, item in enumerate(y_pred) if y_true[idx] == _clf_label and item == _clf_label])
+        _prec_ratio = _num_prec / _pred if _pred > 0 else 0
+        dict_score.update({'pred_{0}'.format(_clf_label): _pred, 'true_{0}'.format(_clf_label): _true,
+                           'n_correct_{0}'.format(_clf_label): _num_prec,
+                           'ratio_correct_{0}'.format(_clf_label): _prec_ratio})
 
-    # scores for clf models
-    # score = metrics.precision_score(y_pred, df_factor['label_clf'], average='macro')
-    # score = metrics.precision_score(y_pred, df_factor['label_clf'], average='micro')
-    # score = metrics.recall_score(y_pred, df_factor['label_clf'], average='macro')
-    # score = metrics.recall_score(y_pred, df_factor['label_clf'], average='micro')
-    # score = metrics.f1_score(y_pred, df_factor['label_clf'], average='macro')
-    # score = metrics.f1_score(y_pred, df_factor['label_clf'], average='micro')
-    df_pred = pd.DataFrame({'pred': y_pred, 'true': df_factor['label_clf'], 'UpdateTime': _update_time_str})
-    _file_name = os.path.join(os.path.abspath(os.pardir), define.RESULT_DIR, define.TICK_MODEL_DIR, 'df_pred.csv')
+    dict_score.update({'macro precision': metrics.precision_score(y_pred, y_true, average='macro')})
+    dict_score.update({'micro precisionn': metrics.precision_score(y_pred, y_true, average='micro')})
+
+    df_pred = pd.DataFrame({'pred': y_pred, 'true': y_true, 'UpdateTime': _update_time_str})
+    # df_pred.to_csv("df_pred.csv")
+    # FIXME double check the file path
+
+    df_coef = pd.DataFrame(model2.coef_, columns=sorted_features)
+    df_coef['classes'] = model2.classes_
+    _cofe_file_name = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR,
+                                   define.TICK_MODEL_DIR,
+                                   'coef_{0}_{1}.csv'.format(test_dates[1].replace('-', ''), instrument_id))
+    df_coef.to_csv(_cofe_file_name, index=False)
+    _inter_file_name = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR,
+                                    define.TICK_MODEL_DIR,
+                                    'inter_{0}_{1}.json'.format(test_dates[1].replace('-', ''), instrument_id))
+    utils.write_json_file(_inter_file_name, list(model2.intercept_))
+    _file_name = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR, define.TICK_MODEL_DIR,
+                              'df_pred_{0}.csv'.format(test_dates[1]))
     df_pred.to_csv(_file_name)
+    return dict_score
 
 
 def train_model_ols(predict_windows: list = [20],
@@ -635,9 +723,11 @@ def train_model_reg_without_feature_preselect(predict_windows: list = [20],
         factor_cnt += 1
         end_ts = time.time()
         print('update factor timestamp:{0}'.format(end_ts - start_ts))
-        cols = list(final_df_factor.columns)
+        # TODO remove hardcode of the factor
+        cols = ['trend_ls_ratio', 'bs_vol_ls_ratio', 'open_close_ratio', 'slope', 'oir']
+        # cols = list(final_df_factor.columns)
         # cols.remove('label_clf')
-        cols.remove('UpdateTime')
+        # cols.remove('UpdateTime')
     # calculate factor
     #     df_corr = df_factor[cols].corr()
     #     # calculate corr score
@@ -677,7 +767,6 @@ def train_model_reg_without_feature_preselect(predict_windows: list = [20],
                 _v = '{0}-{1}'.format(_tmp_lst[0], _tmp_lst[1])
                 _corr_set.add(_v)
         logger.debug('corr average', _corr_set)
-
 
     selected_cols = deepcopy(cols)
     for item in cols:

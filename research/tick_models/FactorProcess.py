@@ -30,13 +30,13 @@ def _normalized_by_base(x: list, normalized_dict: dict, key: str) -> list:
     """
     _normalized_base = normalized_dict.get(key)
     if not _normalized_base:
-        return x
+        return []
     else:
         try:
             return [float(item) / _normalized_base for item in x]
         except Exception as ex:
             print('error for norm cal for col:{0} with error:{1}'.format(key, ex))
-            return x
+            return []
 
 
 def _cal_turning_item(x: list) -> tuple:
@@ -181,6 +181,7 @@ def get_factor(trade_date: str = "20210701", predict_windows: list = [1200], lag
     :return:
     """
     _mul_num = utils.get_mul_num(instrument_id) or 1
+    print(instrument_id, trade_date, define.exchange_map, exchange_cd, define.TICK_MODEL_DIR)
     _tick_mkt_path = os.path.join(define.TICK_MKT_DIR, define.exchange_map.get(exchange_cd),
                                   '{0}_{1}.csv'.format(instrument_id, trade_date.replace('-', '')))
     tick_mkt = pd.read_csv(_tick_mkt_path, encoding='gbk')
@@ -249,20 +250,39 @@ def get_factor(trade_date: str = "20210701", predict_windows: list = [1200], lag
     tick_mkt['bs_tag'] = tick_mkt['LastPrice'].rolling(2).apply(lambda x: 1 if list(x)[-1] > list(x)[0] else -1)
     tick_mkt['bs_vol'] = tick_mkt['bs_tag'] * tick_mkt['Volume']
 
+    def _cal_clf_label(x):
+        # FIXME remove clf bc hardcode, log(1.001)= 0.0009988(0.1%), log(0.999)=-0.001(0.1%)
+        # return [1 if item > 0.001 else 2 if item < -0.001 else 0 for item in x]
+        # return [1 if item > 2 else 2 if item < -2 else 0 for item in x]
+        ret = []
+        for item in x:
+            if item > 5:
+                ret.append(2)
+            elif item < 5 and item >= 2:
+                ret.append(1)
+            elif item < 2 and item > -2:
+                ret.append(0)
+            elif item <= -2 and item > -5:
+                ret.append(-1)
+            else:
+                ret.append(-2)
+        return ret
+        # return [1 if item > 2 else 2 if item < -2 else 0 for item in x]
+
     # agg by windows,agg_dict={factor_name:(executor, new_factor_name)}, if None for new_factor_name, then use the
     # raw name by default
     windows_agg_dict = {
-        'LastPrice': (lambda x: (list(x)[-1] - list(x)[0]) / len(x), 'trend'),
-        'Volume': (np.sum, 'volume'),
-        'Turnover': (np.sum, 'turnover'),
-        'bs_vol': (np.sum, None),
-        'log_return': (np.sum, None)
+        'LastPrice': [(lambda x: (list(x)[-1] - list(x)[0]) / len(x), 'trend')],
+        'Volume': [(np.sum, 'volume')],
+        'Turnover': [(np.sum, 'turnover')],
+        'bs_vol': [(np.sum, None)],
+        'log_return': [(np.sum, None)],
     }
     for idx, _lag in enumerate(lag_windows):
         for key, val in windows_agg_dict.items():
-            _func, rename = val
-            factor_name = rename or key
-            tick_mkt['{0}_{1}'.format(factor_name, idx)] = list(tick_mkt[key].rolling(_lag).apply(_func))
+            for _func, rename in val:
+                factor_name = rename or key
+                tick_mkt['{0}_{1}'.format(factor_name, idx)] = list(tick_mkt[key].rolling(_lag).apply(_func))
 
         tick_mkt['bsvol_volume_{0}'.format(idx)] = tick_mkt['bs_vol_{0}'.format(idx)] / tick_mkt[
             'volume_{0}'.format(idx)]
@@ -271,6 +291,11 @@ def get_factor(trade_date: str = "20210701", predict_windows: list = [1200], lag
         tick_mkt['label_{0}'.format(idx)] = tick_mkt['log_return'].rolling(_pred).sum().shift(1 - _pred)
         tick_mkt['rv_{0}'.format(idx)] = tick_mkt['log_return'].rolling(_pred).apply(realized_volatility).shift(
             1 - _pred)
+        # tick_mkt['label_clf_{0}'.format(idx)] = _cal_clf_label(tick_mkt['label_{0}'.format(idx)])
+
+        tick_mkt['price_chg_{0}'.format(idx)] = tick_mkt['LastPrice'].rolling(_pred).apply(
+            lambda x: list(x)[-1] - list(x)[0]).shift(1 - _pred)
+        tick_mkt['label_clf_{0}'.format(idx)] = _cal_clf_label(tick_mkt['price_chg_{0}'.format(idx)])
 
     # tick_mkt['log_return_short'] = tick_mkt['log_return'].rolling(lag_short).sum()
     # tick_mkt['log_return_long'] = tick_mkt['log_return'].rolling(lag_long).sum()
@@ -319,6 +344,8 @@ def get_factor(trade_date: str = "20210701", predict_windows: list = [1200], lag
             normalized.update({k: (open_dict.get(k) or 1.0)})
     for _base_col, _ref_col in define.normalized_refs:
         _arr = _normalized_by_base(tick_mkt[_base_col], normalized, _ref_col)
+        if not _arr:  # FIXME
+            continue
         tick_mkt['norm_{0}'.format(_base_col.lower())] = _arr
 
     _factor_lst = list(tick_mkt.columns)
