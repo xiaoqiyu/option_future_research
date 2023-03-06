@@ -199,6 +199,7 @@ def get_factor(trade_date: str = "20210701", predict_windows: list = [1200], lag
         'BidVolume1']) / (tick_mkt['AskVolume1'] + tick_mkt['BidVolume1'])
     # tick_mkt['log_return'] = tick_mkt['LastPrice'].rolling(2).apply(lambda x: math.log(list(x)[-1] / list(x)[0]))
     tick_mkt['log_return'] = np.log(tick_mkt['LastPrice']).diff()
+    tick_mkt['wap_log_return'] = np.log(tick_mkt['wap']) - np.log(tick_mkt['LastPrice'])
 
     # tick_mkt['log_return'] = tick_mkt['wap'].rolling(2).apply(lambda x: math.log(list(x)[-1] / list(x)[0]))
 
@@ -254,20 +255,20 @@ def get_factor(trade_date: str = "20210701", predict_windows: list = [1200], lag
         # FIXME remove clf bc hardcode, log(1.001)= 0.0009988(0.1%), log(0.999)=-0.001(0.1%)
         # return [1 if item > 0.001 else 2 if item < -0.001 else 0 for item in x]
         # return [1 if item > 2 else 2 if item < -2 else 0 for item in x]
-        ret = []
-        for item in x:
-            if item > 5:
-                ret.append(2)
-            elif item < 5 and item >= 2:
-                ret.append(1)
-            elif item < 2 and item > -2:
-                ret.append(0)
-            elif item <= -2 and item > -5:
-                ret.append(-1)
-            else:
-                ret.append(-2)
-        return ret
-        # return [1 if item > 2 else 2 if item < -2 else 0 for item in x]
+        # ret = []
+        # for item in x:
+        #     if item > 5:
+        #         ret.append(2)
+        #     elif item < 5 and item >= 2:
+        #         ret.append(1)
+        #     elif item < 2 and item > -2:
+        #         ret.append(0)
+        #     elif item <= -2 and item > -5:
+        #         ret.append(-1)
+        #     else:
+        #         ret.append(-2)
+        # return ret
+        return [1 if item > 2 else -1 if item < -2 else 0 for item in x]
 
     # agg by windows,agg_dict={factor_name:(executor, new_factor_name)}, if None for new_factor_name, then use the
     # raw name by default
@@ -295,7 +296,9 @@ def get_factor(trade_date: str = "20210701", predict_windows: list = [1200], lag
 
         tick_mkt['price_chg_{0}'.format(idx)] = tick_mkt['LastPrice'].rolling(_pred).apply(
             lambda x: list(x)[-1] - list(x)[0]).shift(1 - _pred)
-        tick_mkt['label_clf_{0}'.format(idx)] = _cal_clf_label(tick_mkt['price_chg_{0}'.format(idx)])
+        tick_mkt['vwap_chg_{0}'.format(idx)] = tick_mkt['LastPrice'].rolling(_pred).apply(
+            lambda x: x.mean() - list(x)[0]).shift(1 - _pred)
+        tick_mkt['label_clf_{0}'.format(idx)] = _cal_clf_label(tick_mkt['vwap_chg_{0}'.format(idx)])
 
     # tick_mkt['log_return_short'] = tick_mkt['log_return'].rolling(lag_short).sum()
     # tick_mkt['log_return_long'] = tick_mkt['log_return'].rolling(lag_long).sum()

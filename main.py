@@ -25,29 +25,56 @@ logger = logging.getLogger()
 
 
 def data_visialize(n_records=100):
-    df = pd.read_csv('C:\\projects\\pycharm\\option_future_research\\cache\\factors\\factor_rb2110_20210709.csv')
+    df = pd.read_csv('C:\\projects\\pycharm\\option_future_research\\cache\\factors\\factor_rb2110_20210706.csv')
     print(df.shape)
     # df[['oir', 'label_1']].plot()
     # plt.show()
+    # df.hist(bins=80, figsize=(9, 6))
+    # df[['oir','oi','cos','label_0']].hist(bins=80, figsize=(9, 6))
+    cols = list(df.columns)
+    cols.remove('norm_bs_tag')
 
-    x_idx = list(range(n_records))
 
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    ax.plot(x_idx, list(df['cos'])[:n_records], '-', label='oir')
-    # ax.plot(time, Rn, '-', label='Rn')
-    ax2 = ax.twinx()
-    ax2.plot(x_idx, list(df['price_chg_1'])[:n_records], '-r', label='label')
-    ax.legend(loc=0)
-    ax.grid()
-    # ax.set_xlabel("Time (h)")
-    # ax.set_ylabel(r"Radiation ($MJ\,m^{-2}\,d^{-1}$)")
-    # ax2.set_ylabel(r"Temperature ($^\circ$C)")
-    ax2.set_ylim(-15, 15)
-    ax.set_ylim(-2, 2)
-    ax2.legend(loc=0)
-    # plt.savefig('0.png')
+    # df[cols].hist()
+
+    # sns.pairplot(df_final_features.iloc[:,2:], height=1.5)
+
+    from random import sample
+    # df0 = df[df.label_clf_1 == 0]
+    # df1 = df[df.label_clf_1 == 1]
+    #
+    # num0 = df0.shape[0]
+    # sample_0 = sample(list(range(num0)), int(num0 * 0.1))
+    # df = df1.append(df0.iloc[sample_0])
+    cols = df.columns
+    for c in cols:
+        df.plot.scatter(c, 'label_1')
+        plt.show()
+    # df.plot.scatter('realized_vol', 'future_vol')
+    # df.plot.scatter('aratio', 'bratio')
+    # df = df[df.label_clf_1 != 0]
+    # df.plot.scatter('oir', 'label_1')
+    # plt.xlim(-50,50)
     plt.show()
+
+    # x_idx = list(range(n_records))
+    #
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111)
+    # ax.plot(x_idx, list(df['cos'])[:n_records], '-', label='oir')
+    # # ax.plot(time, Rn, '-', label='Rn')
+    # ax2 = ax.twinx()
+    # ax2.plot(x_idx, list(df['price_chg_1'])[:n_records], '-r', label='label')
+    # ax.legend(loc=0)
+    # ax.grid()
+    # # ax.set_xlabel("Time (h)")
+    # # ax.set_ylabel(r"Radiation ($MJ\,m^{-2}\,d^{-1}$)")
+    # # ax2.set_ylabel(r"Temperature ($^\circ$C)")
+    # ax2.set_ylim(-15, 15)
+    # ax.set_ylim(-2, 2)
+    # ax2.legend(loc=0)
+    # # plt.savefig('0.png')
+    # plt.show()
 
 
 def train_models(start_date: str = '20210701', end_date: str = '20210730', product_id: str = 'rb'):
@@ -61,11 +88,11 @@ def train_models(start_date: str = '20210701', end_date: str = '20210730', produ
     trade_date_df = utils.get_trade_dates(start_date=start_date, end_date=end_date)
     trade_date_df = trade_date_df[trade_date_df.exchangeCD == 'XSHE']
     trade_dates = list(trade_date_df['calendarDate'])
-    train_days = 3
+    train_days = 4
     num_date = len(trade_dates)
     idx = 0
-    predict_window_lst = [20, 40]  # 10s, 30s,1min,5min,10min-- 10s
-    lag_window_lst = [20, 60]  # 10s, 30s,1min,5min,
+    predict_window_lst = [10,20]  # 10s, 30s,1min,5min,10min-- 10s
+    lag_window_lst = [10, 60]  # 10s, 30s,1min,5min,
 
     print(
         'train for predict windows:{0} and lag_windows:{1}'.format(predict_window_lst, lag_window_lst))
@@ -79,19 +106,23 @@ def train_models(start_date: str = '20210701', end_date: str = '20210730', produ
         #                                           end_date=trade_dates[idx + train_days],
         #                                           train_days=train_days, product_id=product_id.upper())
 
-        ret_scores = train_model_clf(predict_windows=predict_window_lst, lag_windows=lag_window_lst,
+        ret_scores = train_model_reg(predict_windows=predict_window_lst, lag_windows=lag_window_lst,
                                      start_date=trade_dates[idx],
                                      end_date=trade_dates[idx + train_days],
                                      top_k_features=-10, train_days=train_days, product_id=product_id.upper())
+        # ret_scores = train_model_clf(predict_windows=predict_window_lst, lag_windows=lag_window_lst,
+        #                              start_date=trade_dates[idx],
+        #                              end_date=trade_dates[idx + train_days],
+        #                              top_k_features=-10, train_days=train_days, product_id=product_id.upper())
         pprint.pprint(ret_scores)
         lst_score.append(ret_scores)
         idx += 1
         gc.collect()
-    df_score = pd.DataFrame(lst_score, columns=list(lst_score[0].keys()))
-    _train_results_file = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR,
-                                       define.TICK_MODEL_DIR,
-                                       'model_evaluation_{0}.csv'.format(product_id))
-    df_score.to_csv(_train_results_file, index=False)
+    # df_score = pd.DataFrame(lst_score, columns=list(lst_score[0].keys()))
+    # _train_results_file = os.path.join(os.path.abspath(os.pardir), define.BASE_DIR, define.RESULT_DIR,
+    #                                    define.TICK_MODEL_DIR,
+    #                                    'model_evaluation_{0}.csv'.format(product_id))
+    # df_score.to_csv(_train_results_file, index=False)
 
 
 def backtest(start_date: str = '20210707', end_date: str = '20210709', product_id: str = 'rb',
@@ -176,10 +207,9 @@ def backtest(start_date: str = '20210707', end_date: str = '20210709', product_i
 if __name__ == "__main__":
     # data_visialize()
     start_date = '20210701'
-    bt_start_date = '20210706'
-    end_date = '20210707'
+    bt_start_date = '20210707'
+    end_date = '20210709'
     product_id = 'm'
-    train_models(start_date=start_date, end_date=end_date, product_id=product_id)
+    # train_models(start_date=start_date, end_date=end_date, product_id=product_id)
     backtest(start_date=bt_start_date, end_date=end_date, product_id=product_id, strategy_name='ClfSignal')
-    # train_model_clf(predict_windows=[20, 60], lag_windows=[20, 60, 120], start_date='20210701', end_date='20210709',
-    #                 top_k_features=-10, train_days=3, product_id='M')
+    # data_visialize()

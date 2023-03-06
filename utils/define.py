@@ -91,7 +91,8 @@ normalized_refs = [('wap', 'LastPrice')]
 #                    ('bs_tag', 'Volume'),
 #                    ('volume_ls_diff', 'Volume'), ('turnover_ls_diff', 'Turnover')]
 
-LABEL_NAME = 'label_1'
+CLF_LABEL_NAME = 'label_clf_1'
+REG_LABEL_NAME = 'label_1'
 
 # train_cols = ['open_close_ratio', 'oi', 'oir', 'aoi', 'slope', 'cos', 'macd', 'dif', 'dea', 'bsvol_volume_0',
 #                 'trend_1', 'bsvol_volume_1',
@@ -99,6 +100,8 @@ LABEL_NAME = 'label_1'
 #                 'bsvol_volume_ls_ratio']
 
 # train_cols = ['slope']
-# train_cols = ['cos', 'macd', 'dif', 'dea', 'trend_0', 'log_return_0', 'bsvol_volume_0', 'trend_1', 'log_return_1',
-#               'bsvol_volume_1', 'trend_ls_ratio', 'volume_ls_ratio', 'turnover_ls_ratio']
-train_cols = ['cos', 'trend_ls_ratio']
+# train_cols = ['cos', 'macd', 'aoi', 'trend_0', 'log_return_0', 'bsvol_volume_0', 'trend_1',
+#               'bsvol_volume_1', 'trend_ls_ratio', 'volume_ls_ratio',  'log_return']
+# train_cols = ['log_return_0', 'log_return_1', 'slope']
+# train_cols = ['cos']
+train_cols = ['log_return', 'log_return_0', 'wap_log_return']
